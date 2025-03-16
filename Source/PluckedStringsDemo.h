@@ -82,9 +82,8 @@ public:
         @param pluckPosition The position of the plucking, relative to the length
                              of the string. Must be between 0 and 1.
     */
-    void stringPlucked (float pluckPosition)
+    void stringPlucked ()
     {
-        jassert (pluckPosition >= 0.0 && pluckPosition <= 1.0);
 
         // we choose a very simple approach to communicate with the audio thread:
         // simply tell the synth to perform the plucking excitation at the beginning
@@ -94,7 +93,7 @@ public:
         {
             // plucking in the middle gives the largest amplitude;
             // plucking at the very ends will do nothing.
-            amplitude = std::sin (MathConstants<float>::pi * pluckPosition);
+            amplitude = std::sin (MathConstants<float>::pi * 0.5);
         }
     }
 
@@ -172,97 +171,50 @@ private:
 };
 
 //==============================================================================
-/*
-    This component represents a horizontal vibrating musical string of fixed height
-    and variable length. The string can be excited by calling stringPlucked().
-*/
-class StringComponent final : public Component,
-                              private Timer
-{
+class PluckedStringsDemo final : public AudioAppComponent,
+                                 //public juce::Component,
+                                 private juce::MidiInputCallback,
+                                 private juce::MidiKeyboardStateListener {
 public:
-    StringComponent (int lengthInPixels, Colour stringColour)
-        : length (lengthInPixels), colour (stringColour)
-    {
-        // ignore mouse-clicks so that our parent can get them instead.
-        setInterceptsMouseClicks (false, false);
-        setSize (length, height);
-        startTimerHz (60);
-    }
-
-    //==============================================================================
-    void stringPlucked (float pluckPositionRelative)
-    {
-        amplitude = maxAmplitude * std::sin (pluckPositionRelative * MathConstants<float>::pi);
-        phase = MathConstants<float>::pi;
-    }
-
-    //==============================================================================
-    void paint (Graphics& g) override
-    {
-        g.setColour (colour);
-        g.strokePath (generateStringPath(), PathStrokeType (2.0f));
-    }
-
-    Path generateStringPath() const
-    {
-        auto y = (float) height / 2.0f;
-
-        Path stringPath;
-        stringPath.startNewSubPath (0, y);
-        stringPath.quadraticTo ((float) length / 2.0f, y + (std::sin (phase) * amplitude), (float) length, y);
-        return stringPath;
-    }
-
-    //==============================================================================
-    void timerCallback() override
-    {
-        updateAmplitude();
-        updatePhase();
-        repaint();
-    }
-
-    void updateAmplitude()
-    {
-        // this determines the decay of the visible string vibration.
-        amplitude *= 0.99f;
-    }
-
-    void updatePhase()
-    {
-        // this determines the visible vibration frequency.
-        // just an arbitrary number chosen to look OK:
-        auto phaseStep = 400.0f / (float) length;
-
-        phase += phaseStep;
-
-        if (phase >= MathConstants<float>::twoPi)
-            phase -= MathConstants<float>::twoPi;
-    }
-
-private:
-    //==============================================================================
-    int length;
-    Colour colour;
-
-    int height = 20;
-    float amplitude = 0.0f;
-    const float maxAmplitude = 12.0f;
-    float phase = 0.0f;
-
-    JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (StringComponent)
-};
-
-//==============================================================================
-class PluckedStringsDemo final : public AudioAppComponent
-{
-public:
-    PluckedStringsDemo()
+   PluckedStringsDemo() : keyboardComponent(keyboardState, juce::MidiKeyboardComponent::horizontalKeyboard)
        #ifdef JUCE_DEMO_RUNNER
-        : AudioAppComponent (getSharedAudioDeviceManager (0, 2))
+        , AudioAppComponent (getSharedAudioDeviceManager (0, 2))
        #endif
     {
-        createStringComponents();
-        setSize (800, 560);
+        addAndMakeVisible (midiInputListLabel);
+        midiInputListLabel.setText ("MIDI Input:", juce::dontSendNotification);
+        midiInputListLabel.attachToComponent (&midiInputList, true);
+
+        addAndMakeVisible (midiInputList);
+        midiInputList.setTextWhenNoChoicesAvailable ("No MIDI Inputs Enabled");
+        auto midiInputs = juce::MidiInput::getAvailableDevices();
+
+        juce::StringArray midiInputNames;
+
+        for (auto input : midiInputs)
+            midiInputNames.add (input.name);
+
+        midiInputList.addItemList (midiInputNames, 1);
+        midiInputList.onChange = [this] { setMidiInput (midiInputList.getSelectedItemIndex()); };
+
+        // find the first enabled device and use that by default
+        for (auto input : midiInputs)
+        {
+            if (deviceManager.isMidiInputDeviceEnabled (input.identifier))
+            {
+                setMidiInput (midiInputs.indexOf (input));
+                break;
+            }
+        }
+
+        // if no enabled devices were found just use the first one in the list
+        if (midiInputList.getSelectedId() == 0)
+            setMidiInput (0);
+
+        addAndMakeVisible (keyboardComponent);
+        keyboardState.addListener (this);
+
+        setSize (600, 400);
 
         // specify the number of input and output channels that we want to open
         auto audioDevice = deviceManager.getCurrentAudioDevice();
@@ -274,6 +226,8 @@ public:
 
     ~PluckedStringsDemo() override
     {
+        keyboardState.removeListener (this);
+        deviceManager.removeMidiInputDeviceCallback (juce::MidiInput::getAvailableDevices()[midiInputList.getSelectedItemIndex()].identifier, this);
         shutdownAudio();
     }
 
@@ -315,41 +269,18 @@ public:
 
     void resized() override
     {
-        auto xPos = 20;
-        auto yPos = 20;
-        auto yDistance = 50;
+        //auto xPos = 20;
+        //auto yPos = 20;
+        //auto yDistance = 50;
 
-        for (auto stringLine : stringLines)
-        {
-            stringLine->setTopLeftPosition (xPos, yPos);
-            yPos += yDistance;
-            addAndMakeVisible (stringLine);
-        }
+        auto area = getLocalBounds();
+
+        midiInputList    .setBounds (area.removeFromTop (36).removeFromRight (getWidth() - 150).reduced (8));
+        keyboardComponent.setBounds (area.removeFromTop (80).reduced(8));
     }
 
 private:
-    void mouseDown (const MouseEvent& e) override
-    {
-        mouseDrag (e);
-    }
 
-    void mouseDrag (const MouseEvent& e) override
-    {
-        for (auto i = 0; i < stringLines.size(); ++i)
-        {
-            auto* stringLine = stringLines.getUnchecked (i);
-
-            if (stringLine->getBounds().contains (e.getPosition()))
-            {
-                auto position = (e.position.x - (float) stringLine->getX()) / (float) stringLine->getWidth();
-
-                stringLine->stringPlucked (position);
-                stringSynths.getUnchecked (i)->stringPlucked (position);
-            }
-        }
-    }
-
-    //==============================================================================
     struct StringParameters
     {
         StringParameters (int midiNote)
@@ -362,17 +293,10 @@ private:
     };
 
     static Array<StringParameters> getDefaultStringParameters()
-    {
-        return Array<StringParameters> (42, 44, 46, 49, 51, 54, 56, 58, 61, 63, 66, 68, 70);
-    }
-
-    void createStringComponents()
-    {
-        for (auto stringParams : getDefaultStringParameters())
-        {
-            stringLines.add (new StringComponent (stringParams.lengthInPixels,
-                                                  Colour::fromHSV (Random().nextFloat(), 0.6f, 0.9f, 1.0f)));
-        }
+    {   
+        //ovo je array neke Fis dur pentatonike, mislim da je 60 = c1
+        //return Array<StringParameters> (42, 44, 46, 49, 51, 54, 56, 58, 61, 63, 66, 68, 70);
+       return Array<StringParameters>(66, 71, 76, 81);
     }
 
     void generateStringSynths (double sampleRate)
@@ -385,9 +309,59 @@ private:
         }
     }
 
+    void setMidiInput(int index) {
+       auto list = juce::MidiInput::getAvailableDevices();
+
+       deviceManager.removeMidiInputDeviceCallback(
+           list[lastInputIndex].identifier, this);
+
+       auto newInput = list[index];
+
+       if (!deviceManager.isMidiInputDeviceEnabled(newInput.identifier))
+          deviceManager.setMidiInputDeviceEnabled(newInput.identifier, true);
+
+       deviceManager.addMidiInputDeviceCallback(newInput.identifier, this);
+       midiInputList.setSelectedId(index + 1, juce::dontSendNotification);
+
+       lastInputIndex = index;
+    }
+
+    // These methods handle callbacks from the midi device + on-screen keyboard..
+
+    void handleIncomingMidiMessage (juce::MidiInput* source, const juce::MidiMessage& message) override
+    {
+        const juce::ScopedValueSetter<bool> scopedInputFlag (isAddingFromMidiInput, true);
+        keyboardState.processNextMidiEvent (message);
+    }
+
+    void handleNoteOn (juce::MidiKeyboardState*, int midiChannel, int midiNoteNumber, float velocity) override
+    {
+        if (! isAddingFromMidiInput)
+        {
+            auto m = juce::MidiMessage::noteOn (midiChannel, midiNoteNumber, velocity);
+            //OVO NEK OSTANE ZA SAD, ne gledamo ništa samo nek svira isti ton
+            stringSynths.getUnchecked(0)->stringPlucked();
+        }
+    }
+
+    void handleNoteOff (juce::MidiKeyboardState*, int midiChannel, int midiNoteNumber, float /*velocity*/) override
+    {
+        if (! isAddingFromMidiInput)
+        {
+            auto m = juce::MidiMessage::noteOff (midiChannel, midiNoteNumber);
+        }
+    }
+
     //==============================================================================
-    OwnedArray<StringComponent> stringLines;
     OwnedArray<StringSynthesiser> stringSynths;
+    juce::AudioDeviceManager deviceManager; // [1]
+    juce::ComboBox midiInputList;           // [2]
+    juce::Label midiInputListLabel;
+    int lastInputIndex = 0;             // [3]
+    bool isAddingFromMidiInput = false; // [4]
+
+    juce::MidiKeyboardState keyboardState;         // [5]
+    juce::MidiKeyboardComponent keyboardComponent; // [6]
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (PluckedStringsDemo)
 };

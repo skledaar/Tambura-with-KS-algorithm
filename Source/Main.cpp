@@ -3,6 +3,8 @@
 
     This file contains the startup code for a PIP.
 
+    main je apsolutno identican ovdje i u HandlingMidiEventsTutorial
+
   ==============================================================================
 */
 
