@@ -60,7 +60,7 @@
 
     Not performance-optimised!
 */
-class StringSynthesiser
+class StringSynthesiser : private Timer
 {
 public:
     //==============================================================================
@@ -94,7 +94,18 @@ public:
             // plucking in the middle gives the largest amplitude;
             // plucking at the very ends will do nothing.
             amplitude = std::sin (MathConstants<float>::pi * 0.5);
+            startTimer(100);
         }
+    }
+
+    void timerCallback()
+    {
+        stringPlucked();
+    }
+
+    void stringMuted()
+    {
+        stopTimer();
     }
 
     //==============================================================================
@@ -156,6 +167,13 @@ private:
                         excitationSample.end(),
                         delayLine.begin(),
                         [this] (double sample) { return static_cast<float> (amplitude * sample); } );
+    }
+
+    void dampInternalBuffer() {
+       // fill the buffer with the precomputed excitation sound (scaled with
+       // amplitude)
+
+       std::fill (delayLine.begin(), delayLine.end(), 0.0f);
     }
 
     //==============================================================================
@@ -349,6 +367,7 @@ private:
         if (! isAddingFromMidiInput)
         {
             auto m = juce::MidiMessage::noteOff (midiChannel, midiNoteNumber);
+            stringSynths.getUnchecked(0)->stringMuted();
         }
     }
 
