@@ -69,11 +69,13 @@ public:
         @param sampleRate      The audio sample rate to use.
         @param frequencyInHz   The fundamental frequency of the simulated string in
                                Hertz.
+        @param pickSpeed       Picking speed in seconds.
     */
-    StringSynthesiser (double sampleRate, double frequencyInHz)
+    StringSynthesiser (double sampleRate, double frequencyInHz, int pickSpeed)
     {
         doPluckForNextBuffer.set (false);
         prepareSynthesiserState (sampleRate, frequencyInHz);
+        changePickSpeed(pickSpeed);
     }
 
     //==============================================================================
@@ -82,6 +84,16 @@ public:
         @param pluckPosition The position of the plucking, relative to the length
                              of the string. Must be between 0 and 1.
     */
+
+    void changePickSpeed(int newPickSpeed) {
+        pickSpeed = newPickSpeed;
+    }
+
+    void changeNote(int midiNoteNumber) {
+       frequencyInHz = MidiMessage::getMidiNoteInHertz(midiNoteNumber);
+       prepareSynthesiserState (frequencyInHz);
+    }
+
     void stringPlucked ()
     {
 
@@ -94,7 +106,7 @@ public:
             // plucking in the middle gives the largest amplitude;
             // plucking at the very ends will do nothing.
             amplitude = std::sin (MathConstants<float>::pi * 0.5);
-            startTimer(100);
+            startTimer(pickSpeed);
         }
     }
 
@@ -138,6 +150,8 @@ private:
     //==============================================================================
     void prepareSynthesiserState (double sampleRate, double frequencyInHz)
     {
+        this->savedSampleRate = sampleRate;
+        this->frequencyInHz = frequencyInHz;
         auto delayLineLength = (size_t) roundToInt (sampleRate / frequencyInHz);
 
         // we need a minimum delay line length to get a reasonable synthesis.
@@ -156,6 +170,12 @@ private:
                        excitationSample.end(),
                        [] { return (Random::getSystemRandom().nextFloat() * 2.0f) - 1.0f; } );
     }
+
+    void prepareSynthesiserState (double frequencyInHz)
+    {
+        prepareSynthesiserState(savedSampleRate, frequencyInHz);
+    }
+
 
     void exciteInternalBuffer()
     {
@@ -179,6 +199,9 @@ private:
     //==============================================================================
     const double decay = 0.998;
     double amplitude = 0.0;
+    int pickSpeed = 100;    //milisekunde
+    double frequencyInHz;
+    double savedSampleRate;
 
     Atomic<int> doPluckForNextBuffer;
 
@@ -199,6 +222,20 @@ public:
         , AudioAppComponent (getSharedAudioDeviceManager (0, 2))
        #endif
     {
+       
+        addAndMakeVisible(pickSpeedRotaryLabel);
+        pickSpeedRotaryLabel.setText("Brzina trzanja:", juce::dontSendNotification);
+        pickSpeedRotaryLabel.attachToComponent (&pickSpeedRotary, true);
+
+
+        addAndMakeVisible(pickSpeedRotary);
+        pickSpeedRotary.setSliderStyle(Slider::Rotary);
+        pickSpeedRotary.setRange(20, 400);
+
+        pickSpeedRotary.onValueChange = [this] { setPickSpeed(pickSpeedRotary.getValue()); };
+
+        
+
         addAndMakeVisible (midiInputListLabel);
         midiInputListLabel.setText ("MIDI Input:", juce::dontSendNotification);
         midiInputListLabel.attachToComponent (&midiInputList, true);
@@ -252,7 +289,12 @@ public:
     //==============================================================================
     void prepareToPlay (int /*samplesPerBlockExpected*/, double sampleRate) override
     {
-        generateStringSynths (sampleRate);
+        generateStringSynths (sampleRate, pickSpeedRotary.getValue());
+    }
+    
+    void prepareToPlay (int /*samplesPerBlockExpected*/, double sampleRate, int pickSpeed)
+    {
+        generateStringSynths (sampleRate, pickSpeed);
     }
 
     void getNextAudioBlock (const AudioSourceChannelInfo& bufferToFill) override
@@ -295,9 +337,13 @@ public:
 
         midiInputList    .setBounds (area.removeFromTop (36).removeFromRight (getWidth() - 150).reduced (8));
         keyboardComponent.setBounds (area.removeFromTop (80).reduced(8));
+        pickSpeedRotary.setBounds(area.removeFromTop(120));
     }
 
 private:
+    
+    //TODO: ovo bi trebao biti ordered set da dobio pravi mono playing
+    std::unordered_set<int> pressedNotes;
 
     struct StringParameters
     {
@@ -317,14 +363,19 @@ private:
        return Array<StringParameters>(66, 71, 76, 81);
     }
 
-    void generateStringSynths (double sampleRate)
+    void generateStringSynths (double sampleRate, int pickSpeed)
     {
         stringSynths.clear();
+        stringSynths.add(new StringSynthesiser (sampleRate, StringParameters(66).frequencyInHz, pickSpeed));
+        //for (auto stringParams : getDefaultStringParameters())
+        //{
+        //    stringSynths.add (new StringSynthesiser (sampleRate, stringParams.frequencyInHz, pickSpeed));
+        //}
+    }
 
-        for (auto stringParams : getDefaultStringParameters())
-        {
-            stringSynths.add (new StringSynthesiser (sampleRate, stringParams.frequencyInHz));
-        }
+    void setPickSpeed(int pickSpeed)
+    {
+       stringSynths.getUnchecked(0)->changePickSpeed(pickSpeed);
     }
 
     void setMidiInput(int index) {
@@ -354,33 +405,37 @@ private:
 
     void handleNoteOn (juce::MidiKeyboardState*, int midiChannel, int midiNoteNumber, float velocity) override
     {
-        if (! isAddingFromMidiInput)
-        {
-            auto m = juce::MidiMessage::noteOn (midiChannel, midiNoteNumber, velocity);
-            //OVO NEK OSTANE ZA SAD, ne gledamo ništa samo nek svira isti ton
-            stringSynths.getUnchecked(0)->stringPlucked();
-        }
+        auto m = juce::MidiMessage::noteOn (midiChannel, midiNoteNumber, velocity);
+        pressedNotes.insert(midiNoteNumber);
+        //OVO NEK OSTANE ZA SAD, ne gledamo ništa samo nek svira isti ton
+        stringSynths.getUnchecked(0)->changeNote(midiNoteNumber);
+        stringSynths.getUnchecked(0)->stringPlucked();
     }
 
     void handleNoteOff (juce::MidiKeyboardState*, int midiChannel, int midiNoteNumber, float /*velocity*/) override
     {
-        if (! isAddingFromMidiInput)
-        {
-            auto m = juce::MidiMessage::noteOff (midiChannel, midiNoteNumber);
+        auto m = juce::MidiMessage::noteOff (midiChannel, midiNoteNumber);
+        pressedNotes.erase(midiNoteNumber);
+        if (pressedNotes.empty())
             stringSynths.getUnchecked(0)->stringMuted();
-        }
     }
 
     //==============================================================================
     OwnedArray<StringSynthesiser> stringSynths;
-    juce::AudioDeviceManager deviceManager; // [1]
-    juce::ComboBox midiInputList;           // [2]
-    juce::Label midiInputListLabel;
-    int lastInputIndex = 0;             // [3]
-    bool isAddingFromMidiInput = false; // [4]
 
-    juce::MidiKeyboardState keyboardState;         // [5]
-    juce::MidiKeyboardComponent keyboardComponent; // [6]
+    juce::Slider pickSpeedRotary;
+    juce::Label pickSpeedRotaryLabel;
+
+    juce::AudioDeviceManager deviceManager;
+    juce::ComboBox midiInputList;
+    juce::Label midiInputListLabel;
+    int lastInputIndex = 0;
+    bool isAddingFromMidiInput = false;
+
+    juce::MidiKeyboardState keyboardState;
+    juce::MidiKeyboardComponent keyboardComponent;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (PluckedStringsDemo)
 };
+
+//TODO: ne znam, jebe ga sad to kaj sam mu dodao mijenjanje note. to u biti ne bi smio radit ja nego tamo neki prepareToPlay jer on ima pristup sampleRateu, ja nemambui
