@@ -94,7 +94,10 @@ public:
        prepareSynthesiserState (frequencyInHz);
     }
 
-    void stringPlucked ()
+    void changeDecay(double decay) { this->decay = decay; }
+
+    //e ovo je grdo, velocity treba hendlat
+    void stringPlucked()//(float velocity)
     {
 
         // we choose a very simple approach to communicate with the audio thread:
@@ -105,13 +108,14 @@ public:
         {
             // plucking in the middle gives the largest amplitude;
             // plucking at the very ends will do nothing.
-            amplitude = std::sin (MathConstants<float>::pi * 0.5);
+           amplitude = std::sin(MathConstants<float>::pi * 0.5); //* velocity);
             startTimer(pickSpeed);
         }
     }
 
     void timerCallback()
-    {
+    {   
+        //TODO: imati u dictionaryju velocityje ili stalno dohvaæat zbog aftertoucha?
         stringPlucked();
     }
 
@@ -152,11 +156,15 @@ private:
     {
         this->savedSampleRate = sampleRate;
         this->frequencyInHz = frequencyInHz;
+        //aha, ovo raèuna svaki put kad promijenim visinu tona i nekad pukne
+        //ako je sample rate 44100Hz, frequencyInHz maksimalno smije biti 882 (a2 samo)
+        //ova varijabla odreðuje visinu tona
         auto delayLineLength = (size_t) roundToInt (sampleRate / frequencyInHz);
 
         // we need a minimum delay line length to get a reasonable synthesis.
         // if you hit this assert, increase sample rate or decrease frequency!
-        jassert (delayLineLength > 50);
+        // 44100 / 882 (max dopušteno) = 50
+        //jassert (delayLineLength > 50);
 
         delayLine.resize (delayLineLength);
         std::fill (delayLine.begin(), delayLine.end(), 0.0f);
@@ -197,7 +205,7 @@ private:
     }
 
     //==============================================================================
-    const double decay = 0.998;
+    double decay = 0.998;
     double amplitude = 0.0;
     int pickSpeed = 100;    //milisekunde
     double frequencyInHz;
@@ -230,18 +238,19 @@ public:
 
         addAndMakeVisible(pickSpeedRotary);
         pickSpeedRotary.setSliderStyle(Slider::Rotary);
-        pickSpeedRotary.setRange(20, 400);
+        pickSpeedRotary.setRange(50, 200);
+        pickSpeedRotary.setValue(100);
 
         pickSpeedRotary.onValueChange = [this] { setPickSpeed(pickSpeedRotary.getValue()); };
 
         
 
         addAndMakeVisible (midiInputListLabel);
-        midiInputListLabel.setText ("MIDI Input:", juce::dontSendNotification);
+        midiInputListLabel.setText ("MIDI ulaz:", juce::dontSendNotification);
         midiInputListLabel.attachToComponent (&midiInputList, true);
 
         addAndMakeVisible (midiInputList);
-        midiInputList.setTextWhenNoChoicesAvailable ("No MIDI Inputs Enabled");
+        midiInputList.setTextWhenNoChoicesAvailable ("Nema dostupnih MIDI uredaja");
         auto midiInputs = juce::MidiInput::getAvailableDevices();
 
         juce::StringArray midiInputNames;
@@ -292,10 +301,11 @@ public:
         generateStringSynths (sampleRate, pickSpeedRotary.getValue());
     }
     
-    void prepareToPlay (int /*samplesPerBlockExpected*/, double sampleRate, int pickSpeed)
-    {
-        generateStringSynths (sampleRate, pickSpeed);
-    }
+    //pa ovo mi niš ne znaèi, nemrem to pozvat jer to automatski framework nekako pri bootu
+    //void prepareToPlay (int /*samplesPerBlockExpected*/, double sampleRate, int pickSpeed)
+    //{
+     //   generateStringSynths (sampleRate, pickSpeed);
+    //}
 
     void getNextAudioBlock (const AudioSourceChannelInfo& bufferToFill) override
     {
@@ -325,7 +335,7 @@ public:
     }
 
     //==============================================================================
-    void paint (Graphics&) override {}
+    //void paint (Graphics&) override {}
 
     void resized() override
     {
@@ -342,42 +352,46 @@ public:
 
 private:
     
-    //TODO: ovo bi trebao biti ordered set da dobio pravi mono playing
+    //TODO: unordered_set bi trebao biti stack da dobio pravi mono playing
     std::unordered_set<int> pressedNotes;
 
     struct StringParameters
     {
         StringParameters (int midiNote)
-            : frequencyInHz (MidiMessage::getMidiNoteInHertz (midiNote)),
-              lengthInPixels ((int) (760 / (frequencyInHz / MidiMessage::getMidiNoteInHertz (42))))
+            : frequencyInHz (MidiMessage::getMidiNoteInHertz (midiNote))
         {}
 
         double frequencyInHz;
         int lengthInPixels;
     };
 
-    static Array<StringParameters> getDefaultStringParameters()
-    {   
-        //ovo je array neke Fis dur pentatonike, mislim da je 60 = c1
-        //return Array<StringParameters> (42, 44, 46, 49, 51, 54, 56, 58, 61, 63, 66, 68, 70);
-       return Array<StringParameters>(66, 71, 76, 81);
+    static Array<StringParameters> getDefaultStringParameters() {
+       // mislim da je 60 = c1
+       //return Array<StringParameters>(66, 71, 76, 81); // primica? ne, oktava gore od braèa
+        return Array<StringParameters>(54, 55, 56, 57, 58, 59, 60, 61, 62, 63, 64, 65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75,
+                                       76, 77, 78, 79, 80, 81, 82, 83, 84, 85,
+                                       86, 87, 88, 89, 90, 91, 92, 93);
     }
 
     void generateStringSynths (double sampleRate, int pickSpeed)
     {
         stringSynths.clear();
-        stringSynths.add(new StringSynthesiser (sampleRate, StringParameters(66).frequencyInHz, pickSpeed));
-        //for (auto stringParams : getDefaultStringParameters())
-        //{
-        //    stringSynths.add (new StringSynthesiser (sampleRate, stringParams.frequencyInHz, pickSpeed));
-        //}
+        //stringSynths.add(new StringSynthesiser (sampleRate, StringParameters(66).frequencyInHz, pickSpeed));
+        for (auto stringParams : getDefaultStringParameters())
+        {
+            stringSynths.add (new StringSynthesiser (sampleRate, stringParams.frequencyInHz, pickSpeed));
+        }
     }
 
     void setPickSpeed(int pickSpeed)
     {
-       stringSynths.getUnchecked(0)->changePickSpeed(pickSpeed);
+        for (auto stringSynth : stringSynths) {
+            stringSynth->changePickSpeed(pickSpeed);
+        }
+        //stringSynths.getUnchecked(0)->changePickSpeed(pickSpeed);
     }
 
+    //ovo valjda šljaka, ne treba dirat
     void setMidiInput(int index) {
        auto list = juce::MidiInput::getAvailableDevices();
 
@@ -396,7 +410,6 @@ private:
     }
 
     // These methods handle callbacks from the midi device + on-screen keyboard..
-
     void handleIncomingMidiMessage (juce::MidiInput* source, const juce::MidiMessage& message) override
     {
         const juce::ScopedValueSetter<bool> scopedInputFlag (isAddingFromMidiInput, true);
@@ -405,19 +418,33 @@ private:
 
     void handleNoteOn (juce::MidiKeyboardState*, int midiChannel, int midiNoteNumber, float velocity) override
     {
-        auto m = juce::MidiMessage::noteOn (midiChannel, midiNoteNumber, velocity);
-        pressedNotes.insert(midiNoteNumber);
+        //ovo mi ne treba??
+
+        //auto m = juce::MidiMessage::noteOn (midiChannel, midiNoteNumber, velocity);
+        //ni ovo
+        //pressedNotes.insert(midiNoteNumber);
         //OVO NEK OSTANE ZA SAD, ne gledamo ništa samo nek svira isti ton
-        stringSynths.getUnchecked(0)->changeNote(midiNoteNumber);
-        stringSynths.getUnchecked(0)->stringPlucked();
+        //stringSynths.getUnchecked(0)->changeNote(midiNoteNumber);
+        //e ali ovo radi ak imamo jedan synth po tonu
+        DBG (midiNoteNumber - 54);
+        if (midiNoteNumber >= 54 && midiNoteNumber <= 93) { //ovo je za sad hardcoded ali mijenjaj za instrumente jel
+            stringSynths.getUnchecked(midiNoteNumber - 54)->changeDecay(0.998);
+            stringSynths.getUnchecked(midiNoteNumber - 54)->stringPlucked(); // velocity);
+        }
+        
+
     }
 
     void handleNoteOff (juce::MidiKeyboardState*, int midiChannel, int midiNoteNumber, float /*velocity*/) override
     {
-        auto m = juce::MidiMessage::noteOff (midiChannel, midiNoteNumber);
-        pressedNotes.erase(midiNoteNumber);
-        if (pressedNotes.empty())
-            stringSynths.getUnchecked(0)->stringMuted();
+        //auto m = juce::MidiMessage::noteOff (midiChannel, midiNoteNumber);
+        //pressedNotes.erase(midiNoteNumber);
+        //if (pressedNotes.empty())
+        //    stringSynths.getUnchecked(0)->stringMuted();
+        if (midiNoteNumber >= 54 && midiNoteNumber <= 93) {
+            stringSynths.getUnchecked(midiNoteNumber - 54)->changeDecay(0.9);
+            stringSynths.getUnchecked(midiNoteNumber - 54)->stringMuted();
+        }
     }
 
     //==============================================================================
@@ -439,3 +466,9 @@ private:
 };
 
 //TODO: ne znam, jebe ga sad to kaj sam mu dodao mijenjanje note. to u biti ne bi smio radit ja nego tamo neki prepareToPlay jer on ima pristup sampleRateu, ja nemambui
+//kako maknuti synth nakon kaj završi playanje? freeati samo jednog
+//TODO: promijenit da nije samo mute note nego se i damping promijeni na žici da realistiènije utihne, ok DONE ali slabije
+//TODO: ubacit naš sample
+//TODO: stavit da je prvi trz malo duži tajmer
+//TODO: fix intonacije, ubaci onu interpolaciju linearnu
+//TODO: staccato mode
