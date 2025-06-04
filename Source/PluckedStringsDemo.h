@@ -133,30 +133,39 @@ public:
         @param numSamples Number of samples to generate (make sure that outBuffer
                           has enough space).
     */
-    void generateAndAddData (float* outBuffer, float numSamples)
+    //ovo je public funkcija jer... ju poziva juce?
+    //ovo je float jer...?
+    void generateAndAddData (float* outBuffer, int numSamples)
     {
         if (doPluckForNextBuffer.compareAndSetBool (0, 1))
             exciteInternalBuffer();
-        float alpha = this->delayLineDecimal;
+        //delayLineWhole = N
+        //delayLineDecimal = alpha
 
-        //numSamples == delayLine.size() kaj ne?
+        //numSamples == delayLine.size() kaj ne? ili outBuffer.size()?
+        //nebitno, ne smiješ koristit. u inspiracijskom kodu se koristi samo za for petlju, a "i" se koristi za outbuffer samo!
         for (auto i = 0; i < numSamples; ++i)
         {
-            int i1 = (pos - numSamples + numSamples) % numSamples;
-            int i2 = (pos - N - 1 + numSamples) % numSamples;
+            //bedastoæe iz matlaba
+            //moramo dodat numSamples da ne dobijemo nešto negativno
+            //int i1 = (pos - delayLineWhole + numSamples) % numSamples;
+            //int i2 = (pos - delayLineWhole + numSamples - 1) % numSamples;
             auto nextPos = (pos + 1) % delayLine.size();
             //TODO: e tu uglavit linear ono govno alfa plus blabla
             //TODO: decay je malo èudan, eh, ak imam decay ne trebam ovih 0.5
             //float interpolatedSample = (1.f - alpha) * delayLine[nextPos] + alpha * delayLine[pos];
-            float interpolatedSample =
-                decay * 0.5f * ((1.f - alpha) * delayLine[i1] +
-                        (1.f + alpha) * delayLine[i2]);
+            //s ovom obiènom malo pucketa kad kreæe... hm al dobro
+            //float interpolatedSample = decay * 0.5f * (delayLine[nextPos] + delayLine[pos]);
+            //pa ak radiš interpolaciju makni 0.5f jooooj
+            // e krckanje nije do sampla... nego do ove interpolacije hmmmm
+            //float interpolatedSample = decay * 0.5f * ((1.0f - delayLineDecimal) * delayLine[nextPos] + (1.0f + delayLineDecimal) * delayLine[pos]);
+            float interpolatedSample = decay * ((1.0f - delayLineDecimal) * delayLine[nextPos] + (delayLineDecimal) * delayLine[pos]);
             //delayLine[nextPos] = (float)(decay * 0.5 * (delayLine[nextPos] + delayLine[pos]));
             delayLine[nextPos] = interpolatedSample;
 
             //outBuffer[i] += delayLine[pos];
             //TODO: zaš nemrem pretvorit += u =? onda radi samo za najviši ton... možda ga ja skratim za sve ko za najviši???
-            outBuffer[i] += interpolatedSample;
+            outBuffer[i] += delayLine[pos];
             //ovo radi ok DBG(1.0 - alpha);
             pos = nextPos;
         }
@@ -167,25 +176,28 @@ private:
     //TODO: ovo mora primati enum ovisno o instrumentu... also jel moramo imat drugaèije samplerate samplove? jel ovisi išta o tome, ako prebrzo pustimo snimljeni sample? probaj promijenit samplerate na kompu
     void prepareSynthesiserState (double sampleRate, double frequencyInHz)
     {
-        this->savedSampleRate = sampleRate;
+        //jel moguæe da se ovo samo jednom vrti???
+        //DBG("prepare za frekvenciju " << frequencyInHz);
+        savedSampleRate = sampleRate;
         this->frequencyInHz = frequencyInHz;
         //aha, ovo raèuna svaki put kad promijenim visinu tona i nekad pukne
         //ako je sample rate 44100Hz, frequencyInHz maksimalno smije biti 882 (a2 samo)
         //ova varijabla odreðuje visinu tona
-        auto delayLineLength = (size_t) std::floor(sampleRate / frequencyInHz);
-        this->delayLineDecimal = sampleRate / frequencyInHz - delayLineLength;
+        delayLineWhole = (int) std::floor(sampleRate / frequencyInHz);
+        delayLineDecimal = (float) (sampleRate / frequencyInHz) - (float) delayLineWhole;
         //DBG(delayLineLength);
         //DBG(this->delayLineDecimal);
 
         // we need a minimum delay line length to get a reasonable synthesis.
         // if you hit this assert, increase sample rate or decrease frequency!
         // 44100 / 882 (max dopušteno) = 50
-        //jassert (delayLineLength > 50);
+        // a da jbt krene se bunit...
+        // jassert (delayLineWhole > 50);
 
-        delayLine.resize (delayLineLength);
+        delayLine.resize(delayLineWhole + 1);    //+1 zbog decimalnog dijela, da interpolacija radi
         std::fill (delayLine.begin(), delayLine.end(), 0.0f);
 
-        excitationSample.resize (delayLineLength);
+        excitationSample.resize(delayLineWhole + 1);
 
         // as the excitation sample we use random noise between -1 and 1
         // (as a simple approximation to a plucking excitation)
@@ -198,6 +210,7 @@ private:
         loadKontraToVector();
     }
 
+    //ummmmmmm tu šaljemo savedSampleRate i tamo ga upisujemo u savedSampleRate... vjv zato jer tamo može doæ od negdje drugdje?
     void prepareSynthesiserState (double frequencyInHz)
     {
         prepareSynthesiserState(savedSampleRate, frequencyInHz);
@@ -208,6 +221,7 @@ private:
     {
         // fill the buffer with the precomputed excitation sound (scaled with amplitude)
         //mislim ovo ga samo metne nutra, nema smisla da je ovo vezano za visinu/frekvenciju tona
+        //TODO: ovo ublažit??? kao prvih 5 fejdat
 
         //DBG(delayLine.size());
         //DBG("   ");
@@ -238,6 +252,14 @@ private:
         excitationSample.assign(channelData,
                                 channelData + excitationSample.size());
         //DBG("excitationSample.size() = " << excitationSample.size());
+        //auto maxElement = std::max_element(
+        //    excitationSample.begin(), excitationSample.end(),
+        //    [](float a, float b) { return std::abs(a) < std::abs(b); });
+
+        //if (maxElement != excitationSample.end())
+        //   DBG("Max amplitude in excitationSample = "
+        //       << *maxElement << " (abs: " << std::abs(*maxElement) << ")");
+
     }
 
     void loadKontraToVector() {
@@ -258,7 +280,8 @@ private:
     int pickSpeed = 110;    //milisekunde, TODO: jel treba ovo bit? i jel treba onaj dolje di definira rotary bit?
     double frequencyInHz;
     double savedSampleRate;
-    float delayLineDecimal;
+    int delayLineWhole;     //N
+    float delayLineDecimal; //alpha
 
     Atomic<int> doPluckForNextBuffer;
 
@@ -418,9 +441,16 @@ private:
     static Array<StringParameters> getDefaultStringParameters() {
        // mislim da je 60 = c1
        //return Array<StringParameters>(66, 71, 76, 81); // primica? ne, oktava gore od braèa
-        return Array<StringParameters>(54, 55, 56, 57, 58, 59, 60, 61, 62, 63, 64, 65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75,
-                                       76, 77, 78, 79, 80, 81, 82, 83, 84, 85,
-                                       86, 87, 88, 89, 90, 91, 92, 93);
+        //return Array<StringParameters>(54, 55, 56, 57, 58, 59, 60, 61, 62, 63, 64, 65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75,
+        //                               76, 77, 78, 79, 80, 81, 82, 83, 84, 85,
+        //                               86, 87, 88, 89, 90, 91, 92, 93);
+       return Array<StringParameters>(52,53,54,55,56,57,58,59,60,61,62,63,64);
+    }
+
+    static int getMinMidiNote() { return 52;
+    }
+
+    static int getMaxMidiNote() { return 64;
     }
 
     void generateStringSynths (double sampleRate, int pickSpeed)
@@ -438,10 +468,8 @@ private:
         for (auto stringSynth : stringSynths) {
             stringSynth->changePickSpeed(pickSpeed);
         }
-        //stringSynths.getUnchecked(0)->changePickSpeed(pickSpeed);
     }
 
-    //ovo valjda šljaka, ne treba dirat
     void setMidiInput(int index) {
        auto list = juce::MidiInput::getAvailableDevices();
 
@@ -459,7 +487,6 @@ private:
        lastInputIndex = index;
     }
 
-    // These methods handle callbacks from the midi device + on-screen keyboard..
     void handleIncomingMidiMessage (juce::MidiInput* source, const juce::MidiMessage& message) override
     {
         const juce::ScopedValueSetter<bool> scopedInputFlag (isAddingFromMidiInput, true);
@@ -469,20 +496,14 @@ private:
     void handleNoteOn (juce::MidiKeyboardState*, int midiChannel, int midiNoteNumber, float velocity) override
     {
         //ovo mi ne treba??
-
         //auto m = juce::MidiMessage::noteOn (midiChannel, midiNoteNumber, velocity);
         //ni ovo
         //pressedNotes.insert(midiNoteNumber);
-        //OVO NEK OSTANE ZA SAD, ne gledamo ništa samo nek svira isti ton
         //stringSynths.getUnchecked(0)->changeNote(midiNoteNumber);
-        //e ali ovo radi ak imamo jedan synth po tonu
-        //DBG (midiNoteNumber - 54);
-        if (midiNoteNumber >= 54 && midiNoteNumber <= 93) { //ovo je za sad hardcoded ali mijenjaj za instrumente jel
-            stringSynths.getUnchecked(midiNoteNumber - 54)->changeDecay(0.998);
-            stringSynths.getUnchecked(midiNoteNumber - 54)->stringPlucked(); // velocity);
+        if (midiNoteNumber >= getMinMidiNote() && midiNoteNumber <= getMaxMidiNote()) { //ovo je za sad hardcoded ali mijenjaj za instrumente jel
+            stringSynths.getUnchecked(midiNoteNumber - getMinMidiNote())->changeDecay(0.998);
+            stringSynths.getUnchecked(midiNoteNumber - getMinMidiNote())->stringPlucked(); // velocity);
         }
-        
-
     }
 
     void handleNoteOff (juce::MidiKeyboardState*, int midiChannel, int midiNoteNumber, float /*velocity*/) override
@@ -491,9 +512,9 @@ private:
         //pressedNotes.erase(midiNoteNumber);
         //if (pressedNotes.empty())
         //    stringSynths.getUnchecked(0)->stringMuted();
-        if (midiNoteNumber >= 54 && midiNoteNumber <= 93) {
-            stringSynths.getUnchecked(midiNoteNumber - 54)->changeDecay(0.9);
-            stringSynths.getUnchecked(midiNoteNumber - 54)->stringMuted();
+        if (midiNoteNumber >= getMinMidiNote() && midiNoteNumber <= getMaxMidiNote()) {
+            stringSynths.getUnchecked(midiNoteNumber - getMinMidiNote())->changeDecay(0.9);
+            stringSynths.getUnchecked(midiNoteNumber - getMinMidiNote())->stringMuted();
         }
     }
 
@@ -517,11 +538,12 @@ private:
 
 //TODO: ne znam, jebe ga sad to kaj sam mu dodao mijenjanje note. to u biti ne bi smio radit ja nego tamo neki prepareToPlay jer on ima pristup sampleRateu, ja nemambui
 //kako maknuti synth nakon kaj završi playanje? freeati samo jednog
-//TODO: promijenit da nije samo mute note nego se i damping promijeni na žici da realistiènije utihne, ok DONE ali slabije
-//TODO: ubacit naš sample
-//TODO: stavit da je prvi trz malo duži tajmer
+//DONE: promijenit da nije samo mute note nego se i damping promijeni na žici da realistiènije utihne, ok DONE ali slabije
+//DONE: ubacit naš sample
+//DONE: stavit da je prvi trz malo duži tajmer
 //TODO: fix intonacije, ubaci onu interpolaciju linearnu
 //TODO: staccato mode
 //TODO: kolko mora bit minimalno dug sample da može generirat sve tonove? što ako nije, jel treba to implementirat u kodu i na koji naèin
 //TODO: panic gumb koji cleara sintove i radi nove
-// TODO: prebacit SVE u mono
+//TODO: prebacit SVE u mono
+//TODO: mislim da moramo zaboravit na ovaj circular buffer i napravit takav da stane cijeli sample, tak æemo jedino dobit dovoljno lijepu sintezu...
