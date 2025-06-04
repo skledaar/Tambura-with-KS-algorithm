@@ -108,7 +108,7 @@ public:
         {
             // plucking in the middle gives the largest amplitude;
             // plucking at the very ends will do nothing.
-           amplitude = std::sin(MathConstants<float>::pi * 0.5); //* velocity);
+            amplitude = std::sin(MathConstants<float>::pi * 0.5); //* velocity);
             startTimer(pickSpeed);
         }
     }
@@ -133,25 +133,38 @@ public:
         @param numSamples Number of samples to generate (make sure that outBuffer
                           has enough space).
     */
-    void generateAndAddData (float* outBuffer, int numSamples)
+    void generateAndAddData (float* outBuffer, float numSamples)
     {
         if (doPluckForNextBuffer.compareAndSetBool (0, 1))
             exciteInternalBuffer();
+        float alpha = this->delayLineDecimal;
 
-        // cycle through the delay line and apply a simple averaging filter
+        //numSamples == delayLine.size() kaj ne?
         for (auto i = 0; i < numSamples; ++i)
         {
+            int i1 = (pos - numSamples + numSamples) % numSamples;
+            int i2 = (pos - N - 1 + numSamples) % numSamples;
             auto nextPos = (pos + 1) % delayLine.size();
+            //TODO: e tu uglavit linear ono govno alfa plus blabla
+            //TODO: decay je malo èudan, eh, ak imam decay ne trebam ovih 0.5
+            //float interpolatedSample = (1.f - alpha) * delayLine[nextPos] + alpha * delayLine[pos];
+            float interpolatedSample =
+                decay * 0.5f * ((1.f - alpha) * delayLine[i1] +
+                        (1.f + alpha) * delayLine[i2]);
+            //delayLine[nextPos] = (float)(decay * 0.5 * (delayLine[nextPos] + delayLine[pos]));
+            delayLine[nextPos] = interpolatedSample;
 
-            delayLine[nextPos] = (float) (decay * 0.5 * (delayLine[nextPos] + delayLine[pos]));
-            outBuffer[i] += delayLine[pos];
-
+            //outBuffer[i] += delayLine[pos];
+            //TODO: zaš nemrem pretvorit += u =? onda radi samo za najviši ton... možda ga ja skratim za sve ko za najviši???
+            outBuffer[i] += interpolatedSample;
+            //ovo radi ok DBG(1.0 - alpha);
             pos = nextPos;
         }
     }
 
 private:
     //==============================================================================
+    //TODO: ovo mora primati enum ovisno o instrumentu... also jel moramo imat drugaèije samplerate samplove? jel ovisi išta o tome, ako prebrzo pustimo snimljeni sample? probaj promijenit samplerate na kompu
     void prepareSynthesiserState (double sampleRate, double frequencyInHz)
     {
         this->savedSampleRate = sampleRate;
@@ -159,7 +172,10 @@ private:
         //aha, ovo raèuna svaki put kad promijenim visinu tona i nekad pukne
         //ako je sample rate 44100Hz, frequencyInHz maksimalno smije biti 882 (a2 samo)
         //ova varijabla odreðuje visinu tona
-        auto delayLineLength = (size_t) roundToInt (sampleRate / frequencyInHz);
+        auto delayLineLength = (size_t) std::floor(sampleRate / frequencyInHz);
+        this->delayLineDecimal = sampleRate / frequencyInHz - delayLineLength;
+        //DBG(delayLineLength);
+        //DBG(this->delayLineDecimal);
 
         // we need a minimum delay line length to get a reasonable synthesis.
         // if you hit this assert, increase sample rate or decrease frequency!
@@ -173,10 +189,13 @@ private:
 
         // as the excitation sample we use random noise between -1 and 1
         // (as a simple approximation to a plucking excitation)
+        // ovo mijenjamo našom funkcijom za unos samplea
 
-        std::generate (excitationSample.begin(),
-                       excitationSample.end(),
-                       [] { return (Random::getSystemRandom().nextFloat() * 2.0f) - 1.0f; } );
+        //std::generate (excitationSample.begin(),
+        //               excitationSample.end(),
+        //               [] { return (Random::getSystemRandom().nextFloat() * 2.0f) - 1.0f; } );
+
+        loadKontraToVector();
     }
 
     void prepareSynthesiserState (double frequencyInHz)
@@ -188,13 +207,42 @@ private:
     void exciteInternalBuffer()
     {
         // fill the buffer with the precomputed excitation sound (scaled with amplitude)
+        //mislim ovo ga samo metne nutra, nema smisla da je ovo vezano za visinu/frekvenciju tona
 
+        //DBG(delayLine.size());
+        //DBG("   ");
+        //DBG(excitationSample.size());
         jassert (delayLine.size() >= excitationSample.size());
 
         std::transform (excitationSample.begin(),
                         excitationSample.end(),
                         delayLine.begin(),
                         [this] (double sample) { return static_cast<float> (amplitude * sample); } );
+    }
+
+    // std::vector<float> loadWavToVector(const juce::File& file)
+    void loadWavToVector(const juce::File& file)
+    {
+        juce::AudioFormatManager formatManager;
+        formatManager.registerBasicFormats();
+        juce::AudioFormatReader* reader = formatManager.createReaderFor(file);
+        
+        juce::AudioBuffer<float> audioBuffer;
+        audioBuffer.setSize((int)reader->numChannels, (int)reader->lengthInSamples);
+
+        //nemremo direktno jer mora bit AudioBuffer tip destinacije
+        reader->read(&audioBuffer, 0, (int)reader->lengthInSamples, 0, true, true);
+        delete reader;
+
+        const float *channelData = audioBuffer.getReadPointer(0);
+        excitationSample.assign(channelData,
+                                channelData + excitationSample.size());
+        //DBG("excitationSample.size() = " << excitationSample.size());
+    }
+
+    void loadKontraToVector() {
+       juce::File sample("C:/Users/josep/FER/treca/6sem/zavrsni/PluckedStringsDemo/Samples/kontraPluck1impuls.wav");
+       loadWavToVector(sample);
     }
 
     void dampInternalBuffer() {
@@ -205,11 +253,12 @@ private:
     }
 
     //==============================================================================
-    double decay = 0.998;
+    float decay = 0.998;
     double amplitude = 0.0;
-    int pickSpeed = 100;    //milisekunde
+    int pickSpeed = 110;    //milisekunde, TODO: jel treba ovo bit? i jel treba onaj dolje di definira rotary bit?
     double frequencyInHz;
     double savedSampleRate;
+    float delayLineDecimal;
 
     Atomic<int> doPluckForNextBuffer;
 
@@ -238,9 +287,10 @@ public:
 
         addAndMakeVisible(pickSpeedRotary);
         pickSpeedRotary.setSliderStyle(Slider::Rotary);
-        pickSpeedRotary.setRange(50, 200);
-        pickSpeedRotary.setValue(100);
+        pickSpeedRotary.setRange(80, 140);
+        pickSpeedRotary.setValue(110);
 
+        //double to int... ok joža
         pickSpeedRotary.onValueChange = [this] { setPickSpeed(pickSpeedRotary.getValue()); };
 
         
@@ -426,7 +476,7 @@ private:
         //OVO NEK OSTANE ZA SAD, ne gledamo ništa samo nek svira isti ton
         //stringSynths.getUnchecked(0)->changeNote(midiNoteNumber);
         //e ali ovo radi ak imamo jedan synth po tonu
-        DBG (midiNoteNumber - 54);
+        //DBG (midiNoteNumber - 54);
         if (midiNoteNumber >= 54 && midiNoteNumber <= 93) { //ovo je za sad hardcoded ali mijenjaj za instrumente jel
             stringSynths.getUnchecked(midiNoteNumber - 54)->changeDecay(0.998);
             stringSynths.getUnchecked(midiNoteNumber - 54)->stringPlucked(); // velocity);
@@ -472,3 +522,6 @@ private:
 //TODO: stavit da je prvi trz malo duži tajmer
 //TODO: fix intonacije, ubaci onu interpolaciju linearnu
 //TODO: staccato mode
+//TODO: kolko mora bit minimalno dug sample da može generirat sve tonove? što ako nije, jel treba to implementirat u kodu i na koji naèin
+//TODO: panic gumb koji cleara sintove i radi nove
+// TODO: prebacit SVE u mono
