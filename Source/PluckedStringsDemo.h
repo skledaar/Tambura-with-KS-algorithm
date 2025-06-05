@@ -159,13 +159,14 @@ public:
             //pa ak radiš interpolaciju makni 0.5f jooooj
             // e krckanje nije do sampla... nego do ove interpolacije hmmmm
             //float interpolatedSample = decay * 0.5f * ((1.0f - delayLineDecimal) * delayLine[nextPos] + (1.0f + delayLineDecimal) * delayLine[pos]);
-            float interpolatedSample = decay * ((1.0f - delayLineDecimal) * delayLine[nextPos] + (delayLineDecimal) * delayLine[pos]);
+            float interpolatedSample = decay * 0.5f * ((1.0f - delayLineDecimal) * delayLine[nextPos] + (1.0f + delayLineDecimal) * delayLine[pos]);
             //delayLine[nextPos] = (float)(decay * 0.5 * (delayLine[nextPos] + delayLine[pos]));
-            delayLine[nextPos] = interpolatedSample;
+            //ZNAÈI SAMO JE OVO TREBALO ZAMIJENIT, pisao sam unaprijed i onda se popikavao... ajde kvragu
+            delayLine[pos] = interpolatedSample;
 
             //outBuffer[i] += delayLine[pos];
             //TODO: zaš nemrem pretvorit += u =? onda radi samo za najviši ton... možda ga ja skratim za sve ko za najviši???
-            outBuffer[i] += delayLine[pos];
+            outBuffer[i] += delayLine[nextPos];
             //ovo radi ok DBG(1.0 - alpha);
             pos = nextPos;
         }
@@ -194,9 +195,11 @@ private:
         // a da jbt krene se bunit...
         // jassert (delayLineWhole > 50);
 
+        // ovo nam smeta da dobijemo sintezu zvuka s impulsom tambure
         delayLine.resize(delayLineWhole + 1);    //+1 zbog decimalnog dijela, da interpolacija radi
         std::fill (delayLine.begin(), delayLine.end(), 0.0f);
 
+        //ovo nam smeta da dobijemo sintezu zvuka s impulsom tambure
         excitationSample.resize(delayLineWhole + 1);
 
         // as the excitation sample we use random noise between -1 and 1
@@ -208,6 +211,8 @@ private:
         //               [] { return (Random::getSystemRandom().nextFloat() * 2.0f) - 1.0f; } );
 
         loadKontraToVector();
+        //delayLine.resize(excitationSample.size());
+        //std::fill(delayLine.begin(), delayLine.end(), 0.0f);
     }
 
     //ummmmmmm tu šaljemo savedSampleRate i tamo ga upisujemo u savedSampleRate... vjv zato jer tamo može doæ od negdje drugdje?
@@ -244,8 +249,11 @@ private:
         juce::AudioBuffer<float> audioBuffer;
         audioBuffer.setSize((int)reader->numChannels, (int)reader->lengthInSamples);
 
+        //excitationSample.resize((int)reader->lengthInSamples);
+
         //nemremo direktno jer mora bit AudioBuffer tip destinacije
-        reader->read(&audioBuffer, 0, (int)reader->lengthInSamples, 0, true, true);
+        //reader->read(&audioBuffer, 0, (int)reader->lengthInSamples, 0, true, true);
+        reader->read(&audioBuffer, 0, excitationSample.size(), 0, true, true);
         delete reader;
 
         const float *channelData = audioBuffer.getReadPointer(0);
