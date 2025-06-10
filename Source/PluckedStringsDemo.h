@@ -29,45 +29,60 @@
 
 //#pragma once ?idk
 
+enum Instrument { Bisernica, Brac, Bugarija, Bas };
+
 class StringSynthesiser : private Timer
 {
 public:
 
     //konstruktor
-    StringSynthesiser (double sampleRate, double frequencyInHz, int pickSpeed)
+    StringSynthesiser (double sampleRate, double frequencyInHz, int pickSpeed, Instrument instrument)
     {
         doPluckForNextBuffer.set (false);
-        prepareSynthesiserState (sampleRate, frequencyInHz);
+        prepareSynthesiserState (sampleRate, frequencyInHz, instrument);
         changePickSpeed(pickSpeed);
     }
 
-    void changePickSpeed(int pickSpeed) {
+    void changePickSpeed(int pickSpeed)
+    {
         this->pickSpeed = pickSpeed;
     }
 
-    void changeTrzanje(bool trzanje) {
+    void changePickRandomness(int pickRandomness)
+    {
+        this->pickRandomness = pickRandomness;
+    }
+
+    void changeTrzanje(bool trzanje)
+    {
         this->trzanje = trzanje;
     }
 
-    void changeNote(int midiNoteNumber) {
+    void changeNote(int midiNoteNumber)
+    {
        frequencyInHz = MidiMessage::getMidiNoteInHertz(midiNoteNumber);
        prepareSynthesiserState (frequencyInHz);
     }
 
-    void changeDecay(double decay) { this->decay = decay; }
+    void changeSavedDecay(float decay) { savedDecay = decay; }
+
+    void changeVelocity(float velocity) { this->velocity = velocity; }
 
     //e ovo je grdo, velocity treba hendlat
-    //TODO: velocity (spremat? Ëitat iz aftertoucha? dictionary? kako u tajmer koji poziva stringPlucked?)
-    //TODO: pozicija trzalice, 0.5 = sredina, 0/1 krajevi ûica
+    //TODO: velocity (spremat? √®itat iz aftertoucha? dictionary? kako u tajmer koji poziva stringPlucked?)
+    //TODO: pozicija trzalice, 0.5 = sredina, 0/1 krajevi ≈æica
     void stringPlucked()
     {
-        //na poËetku iduÊeg buffera (kad se pozove generateAndAddData) sviraj ton
+        //na po√®etku idu√¶eg buffera (kad se pozove generateAndAddData) sviraj ton
 
         if (doPluckForNextBuffer.compareAndSetBool (1, 0))
         {
-            amplitude = std::sin(MathConstants<float>::pi * 0.5); //* velocity);
+            //da, ovo se poziva svaki put jer se velocity mo≈æe promijeniti, a i evo sad je randomness dodan
+            amplitude = std::sin(MathConstants<float>::pi * 0.5 * velocity) 
+                * (0.5 + juce::Random::getSystemRandom().nextDouble() * ((float)pickRandomness * 0.01));
+            decay = savedDecay;
             if (trzanje == true)
-                startTimer(pickSpeed);
+                startTimer(pickSpeed + (float)pickRandomness * juce::Random::getSystemRandom().nextDouble());
         }
     }
 
@@ -80,6 +95,7 @@ public:
     void stringMuted()
     {
         stopTimer();
+        decay = savedDecay * 0.5;
     }
 
     // delayLineWhole = N
@@ -91,6 +107,8 @@ public:
         for (auto i = 0; i < numSamples; ++i)
         {
             auto nextPos = (pos + 1) % delayLine.size();
+            //TODO: objasnit za≈° ovo nije (1-alfa) ... (alfa)
+            //TODO: objasnit u principu cijeli ovaj chunk, to je stranica ziher
             float interpolatedSample = decay * 0.5f * ((1.0f - delayLineDecimal) * delayLine[nextPos] + (1.0f + delayLineDecimal) * delayLine[pos]);
             delayLine[pos] = interpolatedSample;
             outBuffer[i] += delayLine[nextPos];
@@ -100,17 +118,18 @@ public:
 
 private:
     //==============================================================================
-    //TODO: ovo mora primati enum ovisno o instrumentu... also jel moramo imat drugaËije samplerate samplove? jel ovisi iöta o tome, ako prebrzo pustimo snimljeni sample? probaj promijenit samplerate na kompu
-    void prepareSynthesiserState (double sampleRate, double frequencyInHz)
+    //TODO: ovo mora primati enum ovisno o instrumentu... also jel moramo imat druga√®ije samplerate samplove? jel ovisi i≈°ta o tome, ako prebrzo pustimo snimljeni sample? probaj promijenit samplerate na kompu
+    void prepareSynthesiserState (double sampleRate, double frequencyInHz, Instrument instrument)
     {
         savedSampleRate = sampleRate;
         this->frequencyInHz = frequencyInHz;
+        this->instrument = instrument;
         delayLineWhole = (int) std::floor(sampleRate / frequencyInHz);
         delayLineDecimal = (float) (sampleRate / frequencyInHz) - (float) delayLineWhole;
 
         // we need a minimum delay line length to get a reasonable synthesis.
         // if you hit this assert, increase sample rate or decrease frequency!
-        // 44100 / 882 (max dopuöteno) = 50
+        // 44100 / 882 (max dopu≈°teno) = 50
         // a da jbt krene se bunit...
         // jassert (delayLineWhole > 50);
 
@@ -118,17 +137,18 @@ private:
         std::fill (delayLine.begin(), delayLine.end(), 0.0f);
         excitationSample.resize(delayLineWhole + 1);
 
-        loadKontraToVector();
+        //loadKontraToVector();
+        loadInstrumentToVector(instrument);
     }
 
-    //ummmmmmm tu öaljemo savedSampleRate i tamo ga upisujemo u savedSampleRate... vjv zato jer tamo moûe doÊ od negdje drugdje?
+    //ummmmmmm tu ≈°aljemo savedSampleRate i tamo ga upisujemo u savedSampleRate... vjv zato jer tamo mo≈æe do√¶ od negdje drugdje?
     void prepareSynthesiserState (double frequencyInHz)
     {
-        prepareSynthesiserState(savedSampleRate, frequencyInHz);
+        prepareSynthesiserState(savedSampleRate, frequencyInHz, instrument);
     }
 
 
-    //ubacuje excitationSample u delayLine, pokreÊe trzaj
+    //ubacuje excitationSample u delayLine, pokre√¶e trzaj
     void exciteInternalBuffer()
     {
         jassert (delayLine.size() >= excitationSample.size());
@@ -139,6 +159,7 @@ private:
                         [this] (double sample) { return static_cast<float> (amplitude * sample); } );
     }
 
+    //TODO: ako sample nije dovoljno duga√®ak (vjv nemogu√¶e al stavi... also stranica u zavrsnom kolko moraju bit dugacki za kvalitetan sampling
     void loadWavToVector(const juce::File& file)
     {
         juce::AudioFormatManager formatManager;
@@ -163,21 +184,49 @@ private:
 
     }
 
-    void loadKontraToVector() {
-       //TODO: oËito, fajlove ne hardkodirat
+    void loadKontraToVector() 
+    {
+       //TODO: o√®ito, fajlove ne hardkodirat
        juce::File sample("C:/Users/josep/FER/treca/6sem/zavrsni/PluckedStringsDemo/Samples/kontraPluck1impuls.wav");
        loadWavToVector(sample);
     }
 
-    void dampInternalBuffer() {
+    void loadInstrumentToVector(Instrument instrument)
+    {
+        String path;
+        switch (instrument)
+        {
+            case Bisernica:
+                path = "C:/Users/josep/FER/treca/6sem/zavrsni/PluckedStringsDemo/Samples/kontraPluck1impuls.wav";
+                break;
+            case Brac:
+                path = "C:/Users/josep/FER/treca/6sem/zavrsni/PluckedStringsDemo/Samples/kontraPluck1impuls.wav";
+                break;
+            case Bugarija:
+                path = "C:/Users/josep/FER/treca/6sem/zavrsni/PluckedStringsDemo/Samples/kontraPluck1impuls.wav";
+                break;
+            case Bas:
+                path = "C:/Users/josep/FER/treca/6sem/zavrsni/PluckedStringsDemo/Samples/basPrljavci4impuls.wav";
+                break;
+        }
+        juce::File sample(path);
+        loadWavToVector(sample);
+    }
+
+    void dampInternalBuffer() 
+    {
        std::fill (delayLine.begin(), delayLine.end(), 0.0f);
     }
 
     //==============================================================================
-    float decay = 0.998;
+    float decay;    //za manipulaciju odzvanjanja
+    float savedDecay = 0.995;
+    float velocity = 127.0f;
     double amplitude = 0.0;
     int pickSpeed = 110;    //milisekunde, TODO: jel treba ovo bit? i jel treba onaj dolje di definira rotary bit?
+    int pickRandomness = 0;
     bool trzanje = true;
+    Instrument instrument;
     double frequencyInHz;
     double savedSampleRate;
     int delayLineWhole;     //N
@@ -205,23 +254,43 @@ public:
 
         addAndMakeVisible(pickSpeedRotaryLabel);
         pickSpeedRotaryLabel.setText("Brzina trzanja", juce::dontSendNotification); //zasto dontsent? nije implicitno?
-        pickSpeedRotaryLabel.attachToComponent(&pickSpeedRotary, true);
+        pickSpeedRotaryLabel.attachToComponent(&pickSpeedRotary, false);
 
         addAndMakeVisible(pickSpeedRotary);
         pickSpeedRotary.setSliderStyle(Slider::Rotary);
-        pickSpeedRotary.setRange(80, 140);
+        pickSpeedRotary.setRange(80, 140, 1);
         pickSpeedRotary.setValue(110);
 
-        //TODO: double to int... ok joûa, moûe proÊ
+        //TODO: double to int... ok jo≈æa, mo≈æe pro√¶
         pickSpeedRotary.onValueChange = [this] { setPickSpeed(pickSpeedRotary.getValue()); };
+
+        addAndMakeVisible(pickRandomnessRotaryLabel);
+        pickRandomnessRotaryLabel.setText("Varijacija trzanja", juce::dontSendNotification); //zasto dontsent? nije implicitno?
+        pickRandomnessRotaryLabel.attachToComponent(&pickRandomnessRotary, false);
+
+        addAndMakeVisible(pickRandomnessRotary);
+        pickRandomnessRotary.setSliderStyle(Slider::Rotary);
+        pickRandomnessRotary.setRange(0, 100, 1);
+        pickRandomnessRotary.setValue(0);
+
+        pickRandomnessRotary.onValueChange = [this] { setPickRandomness(pickRandomnessRotary.getValue()); };
+
+        addAndMakeVisible(decayRotaryLabel);
+        decayRotaryLabel.setText("Decay", juce::dontSendNotification); //zasto dontsent? nije implicitno?
+        decayRotaryLabel.attachToComponent(&decayRotary, false);
+
+        addAndMakeVisible(decayRotary);
+        decayRotary.setSliderStyle(Slider::Rotary);
+        decayRotary.setRange(0.9, 1);
+        decayRotary.setValue(0.995);
+
+        decayRotary.onValueChange = [this] { setDecay(decayRotary.getValue()); };
 
         addAndMakeVisible(tremoloPickingButton);
         tremoloPickingButton.setButtonText("Trzanje");
         tremoloPickingButton.setToggleState(true, juce::dontSendNotification);
         
-        tremoloPickingButton.onClick = [this] { setTrzanje(tremoloPickingButton.getToggleState());
-           DBG("radi");
-        };
+        tremoloPickingButton.onClick = [this] { setTrzanje(tremoloPickingButton.getToggleState()); };
 
         addAndMakeVisible (midiInputListLabel);
         midiInputListLabel.setText ("MIDI ulaz:", juce::dontSendNotification);
@@ -254,11 +323,12 @@ public:
             setMidiInput (0);
 
         addAndMakeVisible (keyboardComponent);
+        //keyboardComponent.setAvailableRange(getMinMidiNote(), getMaxMidiNote());
         keyboardState.addListener (this);
 
         setSize (600, 400);
 
-        //TODO: huh? prouËi, nauËi. specify the number of input and output channels that we want to open
+        //TODO: huh? prou√®i, nau√®i. specify the number of input and output channels that we want to open
         auto audioDevice = deviceManager.getCurrentAudioDevice();
         auto numInputChannels  = (audioDevice != nullptr ? audioDevice->getActiveInputChannels() .countNumberOfSetBits() : 0);
         auto numOutputChannels = jmax (audioDevice != nullptr ? audioDevice->getActiveOutputChannels().countNumberOfSetBits() : 2, 2);
@@ -306,7 +376,7 @@ public:
     {
         stringSynths.clear();
     }
-
+    /*
     void resized() override
     {
         //auto xPos = 20;
@@ -315,44 +385,88 @@ public:
 
         auto area = getLocalBounds();
 
-        midiInputList       .setBounds (area.removeFromTop (36).removeFromRight (getWidth() - 150).reduced (8));
-        keyboardComponent   .setBounds (area.removeFromTop (80).reduced(8));
-        pickSpeedRotary     .setBounds(area.removeFromTop(120));
-        tremoloPickingButton.setBounds(area.removeFromTop(120).removeFromRight(20));
+        //TODO: ma ovo isto stranica u wordu
+        midiInputList       .setBounds (area.removeFromTop (36).removeFromRight (getWidth() - 150));
+        keyboardComponent   .setBounds (area.removeFromBottom (80));
+        pickSpeedRotary     .setBounds (area.removeFromBottom(120).removeFromLeft(100));
+        pickRandomnessRotary.setBounds (area.removeFromBottom(120).removeFromLeft(100));
+        decayRotary         .setBounds (area.removeFromBottom(120).removeFromRight(100));
+        tremoloPickingButton.setBounds (area.removeFromBottom(120).removeFromRight(200));
+    }*/
+
+    void resized() override {
+       auto area = getLocalBounds();
+
+       // Gornji red ‚Äì MIDI dropdown (top left)
+       midiInputList.setBounds(area.removeFromTop(36).removeFromLeft(150));
+
+       // Donji red ‚Äì Klavijatura
+       keyboardComponent.setBounds(area.removeFromBottom(80));
+
+       // Sad imamo 400 - 36 - 80 = 284 px visine za kontrole
+
+       // Podijeli ostatak na dva reda:
+       auto topControlArea =
+           area.removeFromTop(140);   // Gornji red rotary kontrola
+       auto bottomControlArea = area; // Donji red: decay + tremolo
+
+       // === GORNJI RED ===
+       int rotaryWidth = 120;
+       int rotaryHeight = 120;
+       int rotarySpacing = 40;
+       int topStartX = (getWidth() - (2 * rotaryWidth + rotarySpacing)) / 2;
+
+       pickSpeedRotary.setBounds(topStartX, topControlArea.getY(), rotaryWidth,
+                                 rotaryHeight);
+       pickRandomnessRotary.setBounds(topStartX + rotaryWidth + rotarySpacing,
+                                      topControlArea.getY(), rotaryWidth,
+                                      rotaryHeight);
+
+       // === DONJI RED ===
+       int decayWidth = 120;
+       int buttonWidth = 100;
+       int spacing = 40;
+       int totalBottomWidth = decayWidth + spacing + buttonWidth;
+       int bottomStartX = (getWidth() - totalBottomWidth) / 2;
+
+       decayRotary.setBounds(bottomStartX, bottomControlArea.getY(), decayWidth,
+                             rotaryHeight);
+       tremoloPickingButton.setBounds(
+           bottomStartX + decayWidth + spacing,
+           bottomControlArea.getY() + (rotaryHeight / 2) - 10, buttonWidth,
+           20); // manji gumb, centriran po visini
     }
+
+
 
 private:
     
-    std::unordered_set<int> pressedNotes;
+    //TODO: jel mi ovo treba? sve zakomentirano... vrijeme √¶e pokazati
+    //std::unordered_set<int> pressedNotes;
 
-    enum Instrument {
-        Bisernica,
-        Brac,
-        Bugarija,
-        Bas
-    };
-
-    //vraca sve MIDI tonove koje instrument moûe proizvesti
-    static Array<int> getMidiRange(Instrument instrument) {
+    //vraca sve MIDI tonove koje instrument mo≈æe proizvesti
+    static Array<int> getMidiRange(Instrument instrument)
+    {
         int najnizi;
         int najvisi;
 
-        switch (instrument) {
+        switch (instrument)
+        {
             case Bisernica:
                 najnizi = 61;
                 najvisi = 96;
                 break;
             case Brac:
                 najnizi = 54;
-                najvisi = 85;
+                najvisi = 84;
                 break;
             case Bugarija:
                 najnizi = 52;
                 najvisi = 76;
                 break;
             case Bas:
-                najnizi = 30; //A ötim, F#
-                najvisi = 57; //oktava od 1. ûice
+                najnizi = 30; //A ≈°tim, F#
+                najvisi = 57; //oktava od 1. ≈æice
                 break;
         }
             
@@ -363,10 +477,12 @@ private:
         return notes;
     }
 
-    //TODO: static? i saznat kak rijeöit ove magic numbers pametnije
-    int getMinMidiNote() {
+    //TODO: static? i saznat kak rije≈°it ove magic numbers pametnije
+    int getMinMidiNote()
+    {
         int min;
-        switch (instrument) {
+        switch (instrument)
+        {
             case Bisernica:
                 min = 61;
                 break;
@@ -383,14 +499,16 @@ private:
         return min;
     }
 
-    int getMaxMidiNote() {
+    int getMaxMidiNote()
+    {
         int max;
-        switch (instrument) {
+        switch (instrument)
+        {
             case Bisernica:
                 max = 96;
                 break;
             case Brac:
-                max = 85;
+                max = 84;
                 break;
             case Bugarija:
                 max = 76;
@@ -402,6 +520,7 @@ private:
         return max;
     }
 
+    //TODO: sejvat instrument ili ga vu√® ve√¶ spremljenog?
     void generateStringSynths (double sampleRate, int pickSpeed, Instrument instrument)
     {
         stringSynths.clear();
@@ -410,14 +529,16 @@ private:
            stringSynths.add(new StringSynthesiser(
                sampleRate,
                juce::MidiMessage::getMidiNoteInHertz(midiNote),
-               pickSpeed));
+               pickSpeed, 
+               instrument));
         }
     }
 
     //ovo kad korisnik promijeni instrument tijekom rada
-    //poziva generateStringSynths koji Ëisti sve stare i pali nove
-    //TODO: ovo moûemo koristit i za panic button
-    void setInstrument(Instrument instrument) {
+    //poziva generateStringSynths koji √®isti sve stare i pali nove
+    //TODO: ovo mo≈æemo koristit i za panic button
+    void setInstrument(Instrument instrument)
+    {
         this->instrument = instrument;
         generateStringSynths(savedSampleRate, pickSpeedRotary.getValue(), instrument);
     }
@@ -429,6 +550,13 @@ private:
         }
     }
 
+    void setPickRandomness(int pickRandomness)
+    {
+        for (auto stringSynth : stringSynths) {
+            stringSynth->changePickRandomness(pickRandomness);
+        }
+    }
+
     void setTrzanje(bool trzanje)
     {
         for (auto stringSynth : stringSynths) {
@@ -436,7 +564,15 @@ private:
         }
     }
 
-    void setMidiInput(int index) {
+    void setDecay(float decay)
+    {
+        for (auto stringSynth : stringSynths) {
+            stringSynth->changeSavedDecay(decay);
+        }
+    }
+
+    void setMidiInput(int index)
+    {
        auto list = juce::MidiInput::getAvailableDevices();
 
        deviceManager.removeMidiInputDeviceCallback(
@@ -467,8 +603,9 @@ private:
         //pressedNotes.insert(midiNoteNumber);
         //stringSynths.getUnchecked(0)->changeNote(midiNoteNumber);
         if (midiNoteNumber >= getMinMidiNote() && midiNoteNumber <= getMaxMidiNote()) { //ovo je za sad hardcoded ali mijenjaj za instrumente jel
-            stringSynths.getUnchecked(midiNoteNumber - getMinMidiNote())->changeDecay(0.998);
-            stringSynths.getUnchecked(midiNoteNumber - getMinMidiNote())->stringPlucked(); // velocity);
+            //stringSynths.getUnchecked(midiNoteNumber - getMinMidiNote())->changeDecay(0.998);
+            stringSynths.getUnchecked(midiNoteNumber - getMinMidiNote())->changeVelocity(velocity);
+            stringSynths.getUnchecked(midiNoteNumber - getMinMidiNote())->stringPlucked();
         }
     }
 
@@ -479,7 +616,7 @@ private:
         //if (pressedNotes.empty())
         //    stringSynths.getUnchecked(0)->stringMuted();
         if (midiNoteNumber >= getMinMidiNote() && midiNoteNumber <= getMaxMidiNote()) {
-            stringSynths.getUnchecked(midiNoteNumber - getMinMidiNote())->changeDecay(0.9);
+            //stringSynths.getUnchecked(midiNoteNumber - getMinMidiNote())->changeDecay(0.9);
             stringSynths.getUnchecked(midiNoteNumber - getMinMidiNote())->stringMuted();
         }
     }
@@ -491,6 +628,12 @@ private:
 
     juce::Slider pickSpeedRotary;
     juce::Label pickSpeedRotaryLabel;
+
+    juce::Slider pickRandomnessRotary;
+    juce::Label pickRandomnessRotaryLabel;
+
+    juce::Slider decayRotary;
+    juce::Label decayRotaryLabel;
 
     juce::ToggleButton tremoloPickingButton;  //button ne treba label
 
@@ -507,18 +650,28 @@ private:
 };
 
 //TODO: ne znam, jebe ga sad to kaj sam mu dodao mijenjanje note. to u biti ne bi smio radit ja nego tamo neki prepareToPlay jer on ima pristup sampleRateu, ja nemambui
-//kako maknuti synth nakon kaj zavröi playanje? freeati samo jednog
+//kako maknuti synth nakon kaj zavr≈°i playanje? freeati samo jednog
 //ZAPUSTENO i NEPOTREBNO: unordered_set bi trebao biti stack da dobio pravi mono playing
-//DONE: promijenit da nije samo mute note nego se i damping promijeni na ûici da realistiËnije utihne, ok DONE ali slabije
-//DONE: ubacit naö sample
-//DONE: stavit da je prvi trz malo duûi tajmer
+//DONE: promijenit da nije samo mute note nego se i damping promijeni na ≈æici da realisti√®nije utihne, ok DONE ali slabije
+//DONE: ubacit na≈° sample
+//DONE: stavit da je prvi trz malo du≈æi tajmer
 //TODO: fix intonacije, ubaci onu interpolaciju linearnu
 //TODO: staccato mode
-//TODO: kolko mora bit minimalno dug sample da moûe generirat sve tonove? öto ako nije, jel treba to implementirat u kodu i na koji naËin
+//TODO: kolko mora bit minimalno dug sample da mo≈æe generirat sve tonove? ≈°to ako nije, jel treba to implementirat u kodu i na koji na√®in
 //TODO: panic gumb koji cleara sintove i radi nove
 //TODO: prebacit SVE u mono
-//WRONG: mislim da moramo zaboravit na ovaj circular buffer i napravit takav da stane cijeli sample, tak Êemo jedino dobit dovoljno lijepu sintezu...
-//TODO: kako da pamti pickspeed i instrument pri gaöenju? treba imat neku memoriju? pamti automatski?
-//DONE: izbaËen StringParameters
+//WRONG: mislim da moramo zaboravit na ovaj circular buffer i napravit takav da stane cijeli sample, tak √¶emo jedino dobit dovoljno lijepu sintezu...
+//TODO: kako da pamti pickspeed i instrument pri ga≈°enju? treba imat neku memoriju? pamti automatski?
+//DONE: izba√®en StringParameters
 //TODO: u generateStringSynths kako ubacit odabir instrumenta
 //set je u PluckedStringsDemo klasi, change je u StringSynthesiser
+//TODO: dodaj randomness u trzanje (ma rotary drugi) i dodaj decay rotary i pick position...
+//TODO: dinamika/velocity
+//TODO: sustain pedala
+//TODO: zatamniti note izvan opsega (ili samo postavi koje su visible...)
+//TODO: formatiranje... po defaultu ima≈° 3 razmaka od prije, a razmisli o≈° ostavit tak zagrade
+//TODO: dropdown "instrumenata" ili sampleova samo? jel uop√¶e trebamo rang gledat? a valjda da, svaki put u√®itaj novi sample i radi nove synthove
+//TODO: razli√®it decay factor po instrumentu
+//TODO: stranica o tome ≈°to se desi kada ton "str≈°i", pokazati sample i gdje ga odre≈æe
+//TODO: ili dva decaya? jedan za dok svira, jedan kad se demfa
+//TODO: dynamic decay? manji za ni≈æe tonove... formula
