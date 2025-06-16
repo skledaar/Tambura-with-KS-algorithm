@@ -29,18 +29,19 @@
 
 //#pragma once ?idk
 
-enum Instrument { Bisernica, Brac, Bugarija, Bas };
+enum Instrument { Bisernica = 1, Brac, Bugarija, Bas };
 
 class StringSynthesiser : private Timer
 {
 public:
 
     //konstruktor
-    StringSynthesiser (double sampleRate, double frequencyInHz, int pickSpeed, Instrument instrument)
+    StringSynthesiser (double sampleRate, double frequencyInHz, int pickSpeed, bool trzanje, Instrument instrument)
     {
         doPluckForNextBuffer.set (false);
         prepareSynthesiserState (sampleRate, frequencyInHz, instrument);
         changePickSpeed(pickSpeed);
+        changeTrzanje(trzanje);
     }
 
     void changePickSpeed(int pickSpeed)
@@ -58,11 +59,11 @@ public:
         this->trzanje = trzanje;
     }
 
-    void changeNote(int midiNoteNumber)
-    {
-       frequencyInHz = MidiMessage::getMidiNoteInHertz(midiNoteNumber);
-       prepareSynthesiserState (frequencyInHz);
-    }
+    //void changeNote(int midiNoteNumber)
+    //{
+    //   frequencyInHz = MidiMessage::getMidiNoteInHertz(midiNoteNumber);
+    //   prepareSynthesiserState (frequencyInHz);
+    //}
 
     void changeSavedDecay(float decay) { savedDecay = decay; }
 
@@ -95,7 +96,7 @@ public:
     void stringMuted()
     {
         stopTimer();
-        decay = savedDecay * 0.5;
+        decay = savedDecay * 0.9;
     }
 
     // delayLineWhole = N
@@ -106,7 +107,7 @@ public:
             exciteInternalBuffer();
         for (auto i = 0; i < numSamples; ++i)
         {
-            auto nextPos = (pos + 1) % delayLine.size();
+            auto nextPos = (pos + 1) % delayLine.size();    //u jbt ovo mi puca, integer division by zero... vjv u trenu kad se rade synthovi pa su svi na nula... TODO:
             //TODO: objasnit zaš ovo nije (1-alfa) ... (alfa)
             //TODO: objasnit u principu cijeli ovaj chunk, to je stranica ziher
             float interpolatedSample = decay * 0.5f * ((1.0f - delayLineDecimal) * delayLine[nextPos] + (1.0f + delayLineDecimal) * delayLine[pos]);
@@ -142,21 +143,47 @@ private:
     }
 
     //ummmmmmm tu šaljemo savedSampleRate i tamo ga upisujemo u savedSampleRate... vjv zato jer tamo može doæ od negdje drugdje?
-    void prepareSynthesiserState (double frequencyInHz)
-    {
-        prepareSynthesiserState(savedSampleRate, frequencyInHz, instrument);
-    }
+    //ovo koristimo samo u changeNote
+    //void prepareSynthesiserState (double frequencyInHz)
+    //{
+    //    prepareSynthesiserState(savedSampleRate, frequencyInHz, instrument);
+    //}
 
 
     //ubacuje excitationSample u delayLine, pokreæe trzaj
+    //TODO: ak je manje od dovoljno semplova
     void exciteInternalBuffer()
     {
         jassert (delayLine.size() >= excitationSample.size());
+        DBG("delayLine.size() " << delayLine.size());
+        DBG("excitationSample.size() " << excitationSample.size());
+        
+        /*
+        for (size_t i = 0; i < delayLine.size(); ++i)
+        {
+           delayLine[i % delayLine.size()] +=
+               static_cast<float>(amplitude * excitationSample[i]);
+        }
+        */
+        
+        
+        for (size_t i = 0; i < delayLine.size(); ++i)
+        {
+           delayLine[i % delayLine.size()] =
+               static_cast<float>(amplitude * excitationSample[i] *
+                                  ((delayLine.size() - i) < (delayLine.size() * 0.25f)
+                                       ? (delayLine.size() - i) / (delayLine.size() * 0.25f)
+                                       : 1)
+                                   * (i < 10 ? i / 10.0f : 1));
+        }
+        
 
+        /*
         std::transform (excitationSample.begin(),
                         excitationSample.end(),
                         delayLine.begin(),
                         [this] (double sample) { return static_cast<float> (amplitude * sample); } );
+        */
     }
 
     //TODO: ako sample nije dovoljno dugaèak (vjv nemoguæe al stavi... also stranica u zavrsnom kolko moraju bit dugacki za kvalitetan sampling
@@ -184,29 +211,22 @@ private:
 
     }
 
-    void loadKontraToVector() 
-    {
-       //TODO: oèito, fajlove ne hardkodirat
-       juce::File sample("C:/Users/josep/FER/treca/6sem/zavrsni/PluckedStringsDemo/Samples/kontraPluck1impuls.wav");
-       loadWavToVector(sample);
-    }
-
     void loadInstrumentToVector(Instrument instrument)
     {
         String path;
         switch (instrument)
         {
             case Bisernica:
-                path = "C:/Users/josep/FER/treca/6sem/zavrsni/PluckedStringsDemo/Samples/kontraPluck1impuls.wav";
+                path = "C:/Users/josep/FER/treca/6sem/zavrsni/PluckedStringsDemo/Samples/primPluck2.wav";
                 break;
             case Brac:
-                path = "C:/Users/josep/FER/treca/6sem/zavrsni/PluckedStringsDemo/Samples/kontraPluck1impuls.wav";
+                path = "C:/Users/josep/FER/treca/6sem/zavrsni/PluckedStringsDemo/Samples/bracPluck1.wav";
                 break;
             case Bugarija:
                 path = "C:/Users/josep/FER/treca/6sem/zavrsni/PluckedStringsDemo/Samples/kontraPluck1impuls.wav";
                 break;
             case Bas:
-                path = "C:/Users/josep/FER/treca/6sem/zavrsni/PluckedStringsDemo/Samples/basPrljavci4impuls.wav";
+                path = "C:/Users/josep/FER/treca/6sem/zavrsni/PluckedStringsDemo/Samples/basPluck2a.wav";
                 break;
         }
         juce::File sample(path);
@@ -322,6 +342,21 @@ public:
         if (midiInputList.getSelectedId() == 0)
             setMidiInput (0);
 
+        addAndMakeVisible(instrumentListLabel);
+        instrumentListLabel.setText("Instrument:", juce::dontSendNotification);
+        instrumentListLabel.attachToComponent(&instrumentList, true);
+
+        addAndMakeVisible(instrumentList);
+        instrumentList.addItem("Bisernica", Bisernica);
+        instrumentList.addItem("Brac",      Brac);  //TODO: podrška za "č"
+        instrumentList.addItem("Bugarija",  Bugarija);
+        instrumentList.addItem("Bas",       Bas);
+
+        instrumentList.setSelectedId(Bisernica);
+
+        //pazi ovo castanje inta u instrument
+        instrumentList.onChange = [this] { setInstrument((Instrument)instrumentList.getSelectedId()); };
+
         addAndMakeVisible (keyboardComponent);
         //keyboardComponent.setAvailableRange(getMinMidiNote(), getMaxMidiNote());
         keyboardState.addListener (this);
@@ -346,7 +381,7 @@ public:
     //==============================================================================
     void prepareToPlay (int /*samplesPerBlockExpected*/, double sampleRate) override
     {
-        generateStringSynths (sampleRate, pickSpeedRotary.getValue(), instrument);
+        generateStringSynths (sampleRate, pickSpeedRotary.getValue(), tremoloPickingButton.getToggleState(), instrument);
         savedSampleRate = sampleRate;
     }
 
@@ -398,7 +433,10 @@ public:
        auto area = getLocalBounds();
 
        // Gornji red – MIDI dropdown (top left)
-       midiInputList.setBounds(area.removeFromTop(36).removeFromLeft(150));
+       auto inputControlArea =
+           area.removeFromTop(36);
+       midiInputList.setBounds(inputControlArea.removeFromLeft(150));
+       instrumentList.setBounds(inputControlArea);
 
        // Donji red – Klavijatura
        keyboardComponent.setBounds(area.removeFromBottom(80));
@@ -521,7 +559,7 @@ private:
     }
 
     //TODO: sejvat instrument ili ga vuè veæ spremljenog?
-    void generateStringSynths (double sampleRate, int pickSpeed, Instrument instrument)
+    void generateStringSynths (double sampleRate, int pickSpeed, bool tremoloPicking, Instrument instrument)
     {
         stringSynths.clear();
         for (int midiNote : getMidiRange(instrument))
@@ -529,7 +567,8 @@ private:
            stringSynths.add(new StringSynthesiser(
                sampleRate,
                juce::MidiMessage::getMidiNoteInHertz(midiNote),
-               pickSpeed, 
+               pickSpeed,
+               tremoloPicking,
                instrument));
         }
     }
@@ -540,7 +579,7 @@ private:
     void setInstrument(Instrument instrument)
     {
         this->instrument = instrument;
-        generateStringSynths(savedSampleRate, pickSpeedRotary.getValue(), instrument);
+        generateStringSynths(savedSampleRate, pickSpeedRotary.getValue(), tremoloPickingButton.getToggleState(), instrument);
     }
 
     void setPickSpeed(int pickSpeed)
@@ -623,7 +662,7 @@ private:
 
     //==============================================================================
     OwnedArray<StringSynthesiser> stringSynths;
-    Instrument instrument = Bugarija;  //default
+    Instrument instrument = Bisernica;  //default
     float savedSampleRate;
 
     juce::Slider pickSpeedRotary;
@@ -642,6 +681,9 @@ private:
     juce::Label midiInputListLabel;
     int lastInputIndex = 0;
     bool isAddingFromMidiInput = false;
+
+    juce::ComboBox instrumentList;
+    juce::Label instrumentListLabel;
 
     juce::MidiKeyboardState keyboardState;
     juce::MidiKeyboardComponent keyboardComponent;
@@ -675,3 +717,4 @@ private:
 //TODO: stranica o tome što se desi kada ton "strši", pokazati sample i gdje ga odreže
 //TODO: ili dva decaya? jedan za dok svira, jedan kad se demfa
 //TODO: dynamic decay? manji za niže tonove... formula
+//TODO: da ostanu postavke tijekom mijenjanja instrumenta
