@@ -17,12 +17,12 @@ public:
     //==============================================================================
     Application() = default;
 
-    const juce::String getApplicationName() override       { return "PluckedStringsDemo"; }
+    const juce::String getApplicationName() override       { return "TamburaApp"; }
     const juce::String getApplicationVersion() override    { return "1.0.0"; }
 
     void initialise (const juce::String&) override
     {
-        mainWindow.reset (new MainWindow ("PluckedStringsDemo", new PluckedStringsDemo, *this));
+        mainWindow.reset (new MainWindow ("TamburaApp", new TamburaApp, *this));
     }
 
     void shutdown() override                         { mainWindow = nullptr; }

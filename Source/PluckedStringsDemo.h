@@ -4,7 +4,7 @@
 
  BEGIN_JUCE_PIP_METADATA
 
- name:             PluckedStringsDemo
+ name:             TamburaApp
  version:          1.0.0
  vendor:           JUCE
  website:          http://juce.com
@@ -19,7 +19,7 @@
  moduleFlags:      JUCE_STRICT_REFCOUNTEDPOINTER=1
 
  type:             Component
- mainClass:        PluckedStringsDemo
+ mainClass:        TamburaApp
 
  useLocalCopy:     1
 
@@ -269,12 +269,12 @@ private:
 };
 
 //==============================================================================
-class PluckedStringsDemo final : public AudioAppComponent,
+class TamburaApp final : public AudioAppComponent,
                                  //public juce::Component,
                                  private juce::MidiInputCallback,
                                  private juce::MidiKeyboardStateListener {
 public:
-   PluckedStringsDemo() : keyboardComponent(keyboardState, juce::MidiKeyboardComponent::horizontalKeyboard)
+   TamburaApp() : keyboardComponent(keyboardState, juce::MidiKeyboardComponent::horizontalKeyboard)
        #ifdef JUCE_DEMO_RUNNER
         , AudioAppComponent (getSharedAudioDeviceManager (0, 2))
        #endif
@@ -286,8 +286,9 @@ public:
 
         addAndMakeVisible(pickSpeedRotary);
         pickSpeedRotary.setSliderStyle(Slider::Rotary);
-        pickSpeedRotary.setRange(80, 140, 1);
-        pickSpeedRotary.setValue(110);
+        pickSpeedRotary.setTextBoxStyle(Slider::TextBoxBelow, false, 30, 15);
+        pickSpeedRotary.setRange(70, 140, 1);
+        pickSpeedRotary.setValue(95);
 
         //TODO: double to int... ok joža, može proæ
         pickSpeedRotary.onValueChange = [this] { setPickSpeed(pickSpeedRotary.getValue()); };
@@ -300,6 +301,7 @@ public:
 
         addAndMakeVisible(pickSpeedRandRotary);
         pickSpeedRandRotary.setSliderStyle(Slider::Rotary);
+        pickSpeedRandRotary.setTextBoxStyle(Slider::TextBoxBelow, false, 30, 15);
         pickSpeedRandRotary.setRange(0, 100, 1);
         pickSpeedRandRotary.setValue(0);
 
@@ -313,6 +315,7 @@ public:
 
         addAndMakeVisible(velocityRandRotary);
         velocityRandRotary.setSliderStyle(Slider::Rotary);
+        velocityRandRotary.setTextBoxStyle(Slider::TextBoxBelow, false, 30, 15);
         velocityRandRotary.setRange(0, 100, 1);
         velocityRandRotary.setValue(0);
 
@@ -328,9 +331,12 @@ public:
 
         addAndMakeVisible(playDecayRotary);
         playDecayRotary.setSliderStyle(Slider::Rotary);
-        playDecayRotary.setRange(0.9, 1);
-        playDecayRotary.setValue(0.995);
+        playDecayRotary.setTextBoxStyle(Slider::TextBoxBelow, false, 100, 15);
+        playDecayRotary.setRange(0.8, 1);
+        playDecayRotary.setSkewFactor(7);
+        playDecayRotary.setValue(getDefaultPlayDecay());
 
+        setPlayDecay(getDefaultPlayDecay());
         playDecayRotary.onValueChange = [this] { setPlayDecay(playDecayRotary.getValue()); };
 
 
@@ -341,16 +347,20 @@ public:
 
         addAndMakeVisible(stopDecayRotary);
         stopDecayRotary.setSliderStyle(Slider::Rotary);
-        stopDecayRotary.setRange(0.9, 1);
-        stopDecayRotary.setValue(0.9);
+        stopDecayRotary.setTextBoxStyle(Slider::TextBoxBelow, false, 100, 15);
+        stopDecayRotary.setRange(0, 1);
+        stopDecayRotary.setSkewFactor(3);
+        stopDecayRotary.setValue(getDefaultStopDecay());
 
+        setStopDecay(getDefaultStopDecay());    //malo glupo jer ga tu ne poziva neg već stavlja default od bisernice, dolje ga u instrument list change
         stopDecayRotary.onValueChange = [this] { setStopDecay(stopDecayRotary.getValue()); };
 
 
 
         addAndMakeVisible(tremoloPickingButton);
         tremoloPickingButton.setButtonText("Trzanje");
-        tremoloPickingButton.setToggleState(true, juce::dontSendNotification);
+        tremoloPickingButton.setToggleState(getDefaultTrzanje(), juce::dontSendNotification);
+        setTrzanje(getDefaultTrzanje());
         
         tremoloPickingButton.onClick = [this] { setTrzanje(tremoloPickingButton.getToggleState()); };
 
@@ -397,13 +407,21 @@ public:
         instrumentList.setSelectedId(Bisernica);
 
         //pazi ovo castanje inta u instrument
-        instrumentList.onChange = [this] { setInstrument((Instrument)instrumentList.getSelectedId()); };
+        instrumentList.onChange = [this] {
+            setInstrument((Instrument)instrumentList.getSelectedId());
+            playDecayRotary.setValue(getDefaultPlayDecay());
+            setPlayDecay(getDefaultPlayDecay());
+            stopDecayRotary.setValue(getDefaultStopDecay());
+            setStopDecay(getDefaultStopDecay());
+            tremoloPickingButton.setToggleState(getDefaultTrzanje(), juce::dontSendNotification);
+            setTrzanje(getDefaultTrzanje());
+        };
 
         addAndMakeVisible (keyboardComponent);
         //keyboardComponent.setAvailableRange(getMinMidiNote(), getMaxMidiNote());
         keyboardState.addListener (this);
 
-        setSize (600, 400);
+        setSize (600, 460);
 
         //TODO: huh? prouèi, nauèi. specify the number of input and output channels that we want to open
         auto audioDevice = deviceManager.getCurrentAudioDevice();
@@ -413,7 +431,7 @@ public:
         setAudioChannels (numInputChannels, numOutputChannels);
     }
 
-    ~PluckedStringsDemo() override
+    ~TamburaApp() override
     {
         keyboardState.removeListener (this);
         deviceManager.removeMidiInputDeviceCallback (juce::MidiInput::getAvailableDevices()[midiInputList.getSelectedItemIndex()].identifier, this);
@@ -458,7 +476,7 @@ public:
        auto area = getLocalBounds();
 
        //izbornik midi inputa i liste instrumenata
-       auto inputControlArea = area.removeFromTop(60).removeFromBottom(36);
+       auto inputControlArea = area.removeFromTop(60).removeFromBottom(36); //da stane label iznad
        midiInputList.setBounds(inputControlArea.removeFromLeft(400));
        instrumentList.setBounds(inputControlArea);
 
@@ -466,38 +484,39 @@ public:
        keyboardComponent.setBounds(area.removeFromBottom(80));
 
        auto topControlArea =
-           area.removeFromTop(140);   // Gornji red rotary kontrola
+           area.removeFromTop(180);   // Gornji red rotary kontrola
        auto bottomControlArea = area; // Donji red: decay + tremolo
 
        //gornji red
        int rotaryWidth = 120;
        int rotaryHeight = 120;
-       int rotarySpacing = 40;
+       int rotarySpacing = 60;
+       int labelHeight = 30;
        int topStartX = (getWidth() - (2 * rotaryWidth + rotarySpacing)) / 2;
 
-       pickSpeedRotary.setBounds(topStartX, topControlArea.getY(), rotaryWidth,
-                                 rotaryHeight);
-       pickSpeedRandRotary.setBounds(topStartX + rotaryWidth,
-                                      topControlArea.getY(), rotaryWidth,
-                                      rotaryHeight);
-       velocityRandRotary.setBounds(topStartX + rotaryWidth * 2,
-                                    topControlArea.getY(), rotaryWidth,
+       pickSpeedRotary.setBounds(rotarySpacing, topControlArea.getY() + labelHeight,
+                                 rotaryWidth, rotaryHeight);
+       pickSpeedRandRotary.setBounds(rotarySpacing * 2 + rotaryWidth,
+                                     topControlArea.getY() + labelHeight,
+                                     rotaryWidth,
+                                     rotaryHeight);
+       velocityRandRotary.setBounds(rotarySpacing * 3 + rotaryWidth * 2,
+                                    topControlArea.getY() + labelHeight,
+                                    rotaryWidth,
                                     rotaryHeight);
 
        //donji red
        int decayWidth = 120;
-       int buttonWidth = 100;
-       int spacing = 40;
-       int totalBottomWidth = decayWidth + spacing + buttonWidth;
-       int bottomStartX = (getWidth() - totalBottomWidth) / 2;
+       int buttonWidth = 120;
+       int spacing = 60;
 
-       playDecayRotary.setBounds(bottomStartX, bottomControlArea.getY(), decayWidth,
+       playDecayRotary.setBounds(spacing, bottomControlArea.getY()+10, decayWidth,
                              rotaryHeight);
-       stopDecayRotary.setBounds(bottomStartX + decayWidth, bottomControlArea.getY(),
+       stopDecayRotary.setBounds(spacing * 2 + decayWidth, bottomControlArea.getY()+10,
                                  decayWidth, rotaryHeight);
        tremoloPickingButton.setBounds(
-           bottomStartX + decayWidth * 2,
-           bottomControlArea.getY() + (rotaryHeight / 2) - 10, buttonWidth,
+           spacing * 3 + decayWidth * 2 + 30,
+           bottomControlArea.getY() + (rotaryHeight / 2) - 10 +10, buttonWidth,
            20); // manji gumb, centriran po visini
     }
 
@@ -582,6 +601,67 @@ private:
                 break;
         }
         return max;
+    }
+
+    bool getDefaultTrzanje()
+    {
+        bool rez;
+        switch (instrument)
+        {
+            case Bisernica:
+                rez = true;
+                break;
+            case Brac:
+                rez = true;
+                break;
+            case Bugarija:
+                rez = false;
+                break;
+            case Bas:
+                rez = false;
+                break;
+        }
+        return rez;
+    }
+
+    float getDefaultPlayDecay()
+    {
+        float rez;
+        switch (instrument)
+        {
+            case Bisernica:
+                rez = 0.997;
+                break;
+            case Brac:
+                rez = 0.995;
+                break;
+            case Bugarija:
+                rez = 0.991;
+                break;
+            case Bas:
+                rez = 0.971;
+                break;
+        }
+        return rez;
+    }
+
+    float getDefaultStopDecay() {
+       float rez;
+       switch (instrument) {
+       case Bisernica:
+          rez = 0.925;
+          break;
+       case Brac:
+          rez = 0.862;
+          break;
+       case Bugarija:
+          rez = 0.854;
+          break;
+       case Bas:
+          rez = 0.7;
+          break;
+       }
+       return rez;
     }
 
     //TODO: sejvat instrument ili ga vuè veæ spremljenog?
@@ -732,7 +812,7 @@ private:
     juce::MidiKeyboardState keyboardState;
     juce::MidiKeyboardComponent keyboardComponent;
 
-    JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (PluckedStringsDemo)
+    JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(TamburaApp)
 };
 
 //TODO: ne znam, jebe ga sad to kaj sam mu dodao mijenjanje note. to u biti ne bi smio radit ja nego tamo neki prepareToPlay jer on ima pristup sampleRateu, ja nemambui
