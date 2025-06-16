@@ -49,9 +49,13 @@ public:
         this->pickSpeed = pickSpeed;
     }
 
-    void changePickRandomness(int pickRandomness)
+    void changePickSpeedRand(int pickSpeedRand)
     {
-        this->pickRandomness = pickRandomness;
+        this->pickSpeedRand = pickSpeedRand;
+    }
+
+    void changeVelocityRand(int velocityRand) {
+       this->velocityRand = velocityRand;
     }
 
     void changeTrzanje(bool trzanje)
@@ -65,7 +69,9 @@ public:
     //   prepareSynthesiserState (frequencyInHz);
     //}
 
-    void changeSavedDecay(float decay) { savedDecay = decay; }
+    void changePlayDecay(float decay) { playDecay = decay; }
+
+    void changeStopDecay(float decay) { stopDecay = decay; }
 
     void changeVelocity(float velocity) { this->velocity = velocity; }
 
@@ -80,10 +86,10 @@ public:
         {
             //da, ovo se poziva svaki put jer se velocity može promijeniti, a i evo sad je randomness dodan
             amplitude = std::sin(MathConstants<float>::pi * 0.5 * velocity) 
-                * (0.5 + juce::Random::getSystemRandom().nextDouble() * ((float)pickRandomness * 0.01));
-            decay = savedDecay;
+                * (0.5 + (juce::Random::getSystemRandom().nextDouble() - 0.5f) * ((float)velocityRand * 0.01));
+            decay = playDecay;
             if (trzanje == true)
-                startTimer(pickSpeed + (float)pickRandomness * juce::Random::getSystemRandom().nextDouble());
+                startTimer(pickSpeed + (float)pickSpeedRand * (juce::Random::getSystemRandom().nextDouble() - 0.5f));
         }
     }
 
@@ -96,7 +102,7 @@ public:
     void stringMuted()
     {
         stopTimer();
-        decay = savedDecay * 0.9;
+        decay = stopDecay;
     }
 
     // delayLineWhole = N
@@ -240,11 +246,13 @@ private:
 
     //==============================================================================
     float decay;    //za manipulaciju odzvanjanja
-    float savedDecay = 0.995;
+    float playDecay = 0.995;
+    float stopDecay = 0.9;
     float velocity = 127.0f;
     double amplitude = 0.0;
     int pickSpeed = 110;    //milisekunde, TODO: jel treba ovo bit? i jel treba onaj dolje di definira rotary bit?
-    int pickRandomness = 0;
+    int pickSpeedRand = 0;
+    int velocityRand = 0;
     bool trzanje = true;
     Instrument instrument;
     double frequencyInHz;
@@ -284,27 +292,61 @@ public:
         //TODO: double to int... ok joža, može proæ
         pickSpeedRotary.onValueChange = [this] { setPickSpeed(pickSpeedRotary.getValue()); };
 
-        addAndMakeVisible(pickRandomnessRotaryLabel);
-        pickRandomnessRotaryLabel.setText("Varijacija trzanja", juce::dontSendNotification); //zasto dontsent? nije implicitno?
-        pickRandomnessRotaryLabel.attachToComponent(&pickRandomnessRotary, false);
 
-        addAndMakeVisible(pickRandomnessRotary);
-        pickRandomnessRotary.setSliderStyle(Slider::Rotary);
-        pickRandomnessRotary.setRange(0, 100, 1);
-        pickRandomnessRotary.setValue(0);
 
-        pickRandomnessRotary.onValueChange = [this] { setPickRandomness(pickRandomnessRotary.getValue()); };
+        addAndMakeVisible(pickSpeedRandRotaryLabel);
+        pickSpeedRandRotaryLabel.setText("Varijacija brzine trzanja", juce::dontSendNotification);
+        pickSpeedRandRotaryLabel.attachToComponent(&pickSpeedRandRotary, false);
 
-        addAndMakeVisible(decayRotaryLabel);
-        decayRotaryLabel.setText("Decay", juce::dontSendNotification); //zasto dontsent? nije implicitno?
-        decayRotaryLabel.attachToComponent(&decayRotary, false);
+        addAndMakeVisible(pickSpeedRandRotary);
+        pickSpeedRandRotary.setSliderStyle(Slider::Rotary);
+        pickSpeedRandRotary.setRange(0, 100, 1);
+        pickSpeedRandRotary.setValue(0);
 
-        addAndMakeVisible(decayRotary);
-        decayRotary.setSliderStyle(Slider::Rotary);
-        decayRotary.setRange(0.9, 1);
-        decayRotary.setValue(0.995);
+        pickSpeedRandRotary.onValueChange = [this] { setPickSpeedRand(pickSpeedRandRotary.getValue()); };
 
-        decayRotary.onValueChange = [this] { setDecay(decayRotary.getValue()); };
+
+
+        addAndMakeVisible(velocityRandRotaryLabel);
+        velocityRandRotaryLabel.setText("Varijacija jacine trzanja", juce::dontSendNotification);
+        velocityRandRotaryLabel.attachToComponent(&velocityRandRotary, false);
+
+        addAndMakeVisible(velocityRandRotary);
+        velocityRandRotary.setSliderStyle(Slider::Rotary);
+        velocityRandRotary.setRange(0, 100, 1);
+        velocityRandRotary.setValue(0);
+
+        velocityRandRotary.onValueChange = [this] {
+           setVelocityRand(velocityRandRotary.getValue());
+        };
+
+
+
+        addAndMakeVisible(playDecayRotaryLabel);
+        playDecayRotaryLabel.setText("Decay sviranja", juce::dontSendNotification);
+        playDecayRotaryLabel.attachToComponent(&playDecayRotary, false);
+
+        addAndMakeVisible(playDecayRotary);
+        playDecayRotary.setSliderStyle(Slider::Rotary);
+        playDecayRotary.setRange(0.9, 1);
+        playDecayRotary.setValue(0.995);
+
+        playDecayRotary.onValueChange = [this] { setPlayDecay(playDecayRotary.getValue()); };
+
+
+
+        addAndMakeVisible(stopDecayRotaryLabel);
+        stopDecayRotaryLabel.setText("Decay zaustavljanja", juce::dontSendNotification);
+        stopDecayRotaryLabel.attachToComponent(&stopDecayRotary, false);
+
+        addAndMakeVisible(stopDecayRotary);
+        stopDecayRotary.setSliderStyle(Slider::Rotary);
+        stopDecayRotary.setRange(0.9, 1);
+        stopDecayRotary.setValue(0.9);
+
+        stopDecayRotary.onValueChange = [this] { setStopDecay(stopDecayRotary.getValue()); };
+
+
 
         addAndMakeVisible(tremoloPickingButton);
         tremoloPickingButton.setButtonText("Trzanje");
@@ -314,7 +356,7 @@ public:
 
         addAndMakeVisible (midiInputListLabel);
         midiInputListLabel.setText ("MIDI ulaz:", juce::dontSendNotification);
-        midiInputListLabel.attachToComponent (&midiInputList, true);
+        midiInputListLabel.attachToComponent (&midiInputList, false);
 
         addAndMakeVisible (midiInputList);
         midiInputList.setTextWhenNoChoicesAvailable ("Nema dostupnih MIDI uredaja");
@@ -344,7 +386,7 @@ public:
 
         addAndMakeVisible(instrumentListLabel);
         instrumentListLabel.setText("Instrument:", juce::dontSendNotification);
-        instrumentListLabel.attachToComponent(&instrumentList, true);
+        instrumentListLabel.attachToComponent(&instrumentList, false);
 
         addAndMakeVisible(instrumentList);
         instrumentList.addItem("Bisernica", Bisernica);
@@ -411,44 +453,23 @@ public:
     {
         stringSynths.clear();
     }
-    /*
-    void resized() override
-    {
-        //auto xPos = 20;
-        //auto yPos = 20;
-        //auto yDistance = 50;
-
-        auto area = getLocalBounds();
-
-        //TODO: ma ovo isto stranica u wordu
-        midiInputList       .setBounds (area.removeFromTop (36).removeFromRight (getWidth() - 150));
-        keyboardComponent   .setBounds (area.removeFromBottom (80));
-        pickSpeedRotary     .setBounds (area.removeFromBottom(120).removeFromLeft(100));
-        pickRandomnessRotary.setBounds (area.removeFromBottom(120).removeFromLeft(100));
-        decayRotary         .setBounds (area.removeFromBottom(120).removeFromRight(100));
-        tremoloPickingButton.setBounds (area.removeFromBottom(120).removeFromRight(200));
-    }*/
 
     void resized() override {
        auto area = getLocalBounds();
 
-       // Gornji red – MIDI dropdown (top left)
-       auto inputControlArea =
-           area.removeFromTop(36);
-       midiInputList.setBounds(inputControlArea.removeFromLeft(150));
+       //izbornik midi inputa i liste instrumenata
+       auto inputControlArea = area.removeFromTop(60).removeFromBottom(36);
+       midiInputList.setBounds(inputControlArea.removeFromLeft(400));
        instrumentList.setBounds(inputControlArea);
 
-       // Donji red – Klavijatura
+       //klavijatura skroz dolje
        keyboardComponent.setBounds(area.removeFromBottom(80));
 
-       // Sad imamo 400 - 36 - 80 = 284 px visine za kontrole
-
-       // Podijeli ostatak na dva reda:
        auto topControlArea =
            area.removeFromTop(140);   // Gornji red rotary kontrola
        auto bottomControlArea = area; // Donji red: decay + tremolo
 
-       // === GORNJI RED ===
+       //gornji red
        int rotaryWidth = 120;
        int rotaryHeight = 120;
        int rotarySpacing = 40;
@@ -456,21 +477,26 @@ public:
 
        pickSpeedRotary.setBounds(topStartX, topControlArea.getY(), rotaryWidth,
                                  rotaryHeight);
-       pickRandomnessRotary.setBounds(topStartX + rotaryWidth + rotarySpacing,
+       pickSpeedRandRotary.setBounds(topStartX + rotaryWidth,
                                       topControlArea.getY(), rotaryWidth,
                                       rotaryHeight);
+       velocityRandRotary.setBounds(topStartX + rotaryWidth * 2,
+                                    topControlArea.getY(), rotaryWidth,
+                                    rotaryHeight);
 
-       // === DONJI RED ===
+       //donji red
        int decayWidth = 120;
        int buttonWidth = 100;
        int spacing = 40;
        int totalBottomWidth = decayWidth + spacing + buttonWidth;
        int bottomStartX = (getWidth() - totalBottomWidth) / 2;
 
-       decayRotary.setBounds(bottomStartX, bottomControlArea.getY(), decayWidth,
+       playDecayRotary.setBounds(bottomStartX, bottomControlArea.getY(), decayWidth,
                              rotaryHeight);
+       stopDecayRotary.setBounds(bottomStartX + decayWidth, bottomControlArea.getY(),
+                                 decayWidth, rotaryHeight);
        tremoloPickingButton.setBounds(
-           bottomStartX + decayWidth + spacing,
+           bottomStartX + decayWidth * 2,
            bottomControlArea.getY() + (rotaryHeight / 2) - 10, buttonWidth,
            20); // manji gumb, centriran po visini
     }
@@ -589,11 +615,17 @@ private:
         }
     }
 
-    void setPickRandomness(int pickRandomness)
+    void setPickSpeedRand(int pickSpeedRand)
     {
         for (auto stringSynth : stringSynths) {
-            stringSynth->changePickRandomness(pickRandomness);
+          stringSynth->changePickSpeedRand(pickSpeedRand);
         }
+    }
+
+    void setVelocityRand(int velocityRand) {
+       for (auto stringSynth : stringSynths) {
+          stringSynth->changeVelocityRand(velocityRand);
+       }
     }
 
     void setTrzanje(bool trzanje)
@@ -603,11 +635,17 @@ private:
         }
     }
 
-    void setDecay(float decay)
+    void setPlayDecay(float decay)
     {
         for (auto stringSynth : stringSynths) {
-            stringSynth->changeSavedDecay(decay);
+            stringSynth->changePlayDecay(decay);
         }
+    }
+
+    void setStopDecay(float decay) {
+       for (auto stringSynth : stringSynths) {
+          stringSynth->changeStopDecay(decay);
+       }
     }
 
     void setMidiInput(int index)
@@ -668,11 +706,17 @@ private:
     juce::Slider pickSpeedRotary;
     juce::Label pickSpeedRotaryLabel;
 
-    juce::Slider pickRandomnessRotary;
-    juce::Label pickRandomnessRotaryLabel;
+    juce::Slider pickSpeedRandRotary;
+    juce::Label pickSpeedRandRotaryLabel;
 
-    juce::Slider decayRotary;
-    juce::Label decayRotaryLabel;
+    juce::Slider velocityRandRotary;
+    juce::Label velocityRandRotaryLabel;
+
+    juce::Slider playDecayRotary;
+    juce::Label playDecayRotaryLabel;
+
+    juce::Slider stopDecayRotary;
+    juce::Label stopDecayRotaryLabel;
 
     juce::ToggleButton tremoloPickingButton;  //button ne treba label
 
