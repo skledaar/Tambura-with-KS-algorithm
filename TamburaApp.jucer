@@ -1,15 +1,15 @@
 <?xml version="1.0" encoding="UTF-8"?>
 
-<JUCERPROJECT name="PluckedStringsDemo" companyName="JUCE" version="1.0.0"
+<JUCERPROJECT name="TamburaApp" companyName="JUCE" version="1.0.0"
               userNotes="Simulation of a plucked string sound." companyWebsite="http://juce.com"
               defines="PIP_JUCE_EXAMPLES_DIRECTORY=QzpcVXNlcnNcam9zZXBcSlVDRVxleGFtcGxlcw=="
               projectType="guiapp" useAppConfig="0" addUsingNamespaceToJuceHeader="1"
               id="WDaDAf" jucerFormatVersion="1">
-  <MAINGROUP id="ibbOJO" name="PluckedStringsDemo">
+  <MAINGROUP id="ibbOJO" name="TamburaApp">
     <GROUP id="{DBB6D444-D444-1AFD-3811-2842E39DB95E}" name="Source">
       <FILE id="iuPEAV" name="Main.cpp" compile="1" resource="0" file="Source/Main.cpp"/>
-      <FILE id="PeaQVf" name="PluckedStringsDemo.h" compile="0" resource="0"
-            file="Source/PluckedStringsDemo.h"/>
+      <FILE id="PeaQVf" name="TamburaApp.h" compile="0" resource="0"
+            file="Source/TamburaApp.h"/>
     </GROUP>
   </MAINGROUP>
   <MODULES>
@@ -28,8 +28,8 @@
   <EXPORTFORMATS>
     <XCODE_MAC targetFolder="Builds/MacOSX">
       <CONFIGURATIONS>
-        <CONFIGURATION name="Debug" isDebug="1" optimisation="1" targetName="PluckedStringsDemo"/>
-        <CONFIGURATION name="Release" isDebug="0" optimisation="3" targetName="PluckedStringsDemo"/>
+        <CONFIGURATION name="Debug" isDebug="1" optimisation="1" targetName="TamburaApp"/>
+        <CONFIGURATION name="Release" isDebug="0" optimisation="3" targetName="TamburaApp"/>
       </CONFIGURATIONS>
       <MODULEPATHS>
         <MODULEPATH id="juce_audio_basics" path=""/>
@@ -47,8 +47,8 @@
     </XCODE_MAC>
     <VS2022 targetFolder="Builds/VisualStudio2022" extraCompilerFlags="/bigobj">
       <CONFIGURATIONS>
-        <CONFIGURATION name="Debug" isDebug="1" optimisation="1" targetName="PluckedStringsDemo"/>
-        <CONFIGURATION name="Release" isDebug="0" optimisation="3" targetName="PluckedStringsDemo"/>
+        <CONFIGURATION name="Debug" isDebug="1" optimisation="1" targetName="TamburaApp"/>
+        <CONFIGURATION name="Release" isDebug="0" optimisation="3" targetName="TamburaApp"/>
       </CONFIGURATIONS>
       <MODULEPATHS>
         <MODULEPATH id="juce_audio_basics" path=""/>
@@ -66,8 +66,8 @@
     </VS2022>
     <LINUX_MAKE targetFolder="Builds/LinuxMakefile">
       <CONFIGURATIONS>
-        <CONFIGURATION name="Debug" isDebug="1" optimisation="1" targetName="PluckedStringsDemo"/>
-        <CONFIGURATION name="Release" isDebug="0" optimisation="3" targetName="PluckedStringsDemo"/>
+        <CONFIGURATION name="Debug" isDebug="1" optimisation="1" targetName="TamburaApp"/>
+        <CONFIGURATION name="Release" isDebug="0" optimisation="3" targetName="TamburaApp"/>
       </CONFIGURATIONS>
       <MODULEPATHS>
         <MODULEPATH id="juce_audio_basics" path=""/>
@@ -87,8 +87,8 @@
                    androidBluetoothScanNeeded="1" androidBluetoothAdvertiseNeeded="1"
                    androidBluetoothConnectNeeded="1">
       <CONFIGURATIONS>
-        <CONFIGURATION name="Debug" isDebug="1" optimisation="1" targetName="PluckedStringsDemo"/>
-        <CONFIGURATION name="Release" isDebug="0" optimisation="3" targetName="PluckedStringsDemo"/>
+        <CONFIGURATION name="Debug" isDebug="1" optimisation="1" targetName="TamburaApp"/>
+        <CONFIGURATION name="Release" isDebug="0" optimisation="3" targetName="TamburaApp"/>
       </CONFIGURATIONS>
       <MODULEPATHS>
         <MODULEPATH id="juce_audio_basics" path=""/>
@@ -106,8 +106,8 @@
     </ANDROIDSTUDIO>
     <XCODE_IPHONE targetFolder="Builds/iOS" customXcodeResourceFolders="C:\Users\josep\JUCE\examples\Assets">
       <CONFIGURATIONS>
-        <CONFIGURATION name="Debug" isDebug="1" optimisation="1" targetName="PluckedStringsDemo"/>
-        <CONFIGURATION name="Release" isDebug="0" optimisation="3" targetName="PluckedStringsDemo"/>
+        <CONFIGURATION name="Debug" isDebug="1" optimisation="1" targetName="TamburaApp"/>
+        <CONFIGURATION name="Release" isDebug="0" optimisation="3" targetName="TamburaApp"/>
       </CONFIGURATIONS>
       <MODULEPATHS>
         <MODULEPATH id="juce_audio_basics" path=""/>

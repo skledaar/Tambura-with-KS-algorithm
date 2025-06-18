@@ -9,7 +9,7 @@
 */
 
 #include <JuceHeader.h>
-#include "PluckedStringsDemo.h"
+#include "TamburaApp.h"
 
 class Application    : public juce::JUCEApplication
 {

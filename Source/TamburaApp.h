@@ -6,9 +6,7 @@
 
  name:             TamburaApp
  version:          1.0.0
- vendor:           JUCE
- website:          http://juce.com
- description:      Simulation of a plucked string sound.
+ description:      Sinteza zvuka tambure pomoću Karplus-Strong algoritma.
 
  dependencies:     juce_audio_basics, juce_audio_devices, juce_audio_formats,
                    juce_audio_processors, juce_audio_utils, juce_core,
