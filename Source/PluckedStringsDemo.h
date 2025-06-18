@@ -160,9 +160,9 @@ private:
     //TODO: ak je manje od dovoljno semplova
     void exciteInternalBuffer()
     {
-        jassert (delayLine.size() >= excitationSample.size());
-        DBG("delayLine.size() " << delayLine.size());
-        DBG("excitationSample.size() " << excitationSample.size());
+        //jassert (delayLine.size() >= excitationSample.size());
+        //DBG("delayLine.size() " << delayLine.size());
+        //DBG("excitationSample.size() " << excitationSample.size());
         
         /*
         for (size_t i = 0; i < delayLine.size(); ++i)
@@ -201,6 +201,7 @@ private:
         
         juce::AudioBuffer<float> audioBuffer;
         audioBuffer.setSize((int)reader->numChannels, (int)reader->lengthInSamples);
+        audioBuffer.clear();
 
         //excitationSample.resize((int)reader->lengthInSamples);
 
@@ -415,6 +416,10 @@ public:
             setStopDecay(getDefaultStopDecay());
             tremoloPickingButton.setToggleState(getDefaultTrzanje(), juce::dontSendNotification);
             setTrzanje(getDefaultTrzanje());
+            pickSpeedRandRotary.setValue(0);
+            setPickSpeedRand(0);
+            velocityRandRotary.setValue(0);
+            setVelocityRand(0);
         };
 
         addAndMakeVisible (keyboardComponent);
