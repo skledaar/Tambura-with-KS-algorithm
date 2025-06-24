@@ -1,15 +1,14 @@
 <?xml version="1.0" encoding="UTF-8"?>
 
-<JUCERPROJECT name="TamburaApp" companyName="JUCE" version="1.0.0"
-              userNotes="Simulation of a plucked string sound." companyWebsite="http://juce.com"
+<JUCERPROJECT name="TamburaApp" version="1.0.0" userNotes="Sinteza zvuka tambure pomo&#263;u Karplus-Strong algoritma."
               defines="PIP_JUCE_EXAMPLES_DIRECTORY=QzpcVXNlcnNcam9zZXBcSlVDRVxleGFtcGxlcw=="
               projectType="guiapp" useAppConfig="0" addUsingNamespaceToJuceHeader="1"
-              id="WDaDAf" jucerFormatVersion="1">
+              id="WDaDAf" jucerFormatVersion="1" companyName="Josip Skledar"
+              companyWebsite="https://github.com/skledaar">
   <MAINGROUP id="ibbOJO" name="TamburaApp">
     <GROUP id="{DBB6D444-D444-1AFD-3811-2842E39DB95E}" name="Source">
       <FILE id="iuPEAV" name="Main.cpp" compile="1" resource="0" file="Source/Main.cpp"/>
-      <FILE id="PeaQVf" name="TamburaApp.h" compile="0" resource="0"
-            file="Source/TamburaApp.h"/>
+      <FILE id="PeaQVf" name="TamburaApp.h" compile="0" resource="0" file="Source/TamburaApp.h"/>
     </GROUP>
   </MAINGROUP>
   <MODULES>
@@ -48,7 +47,8 @@
     <VS2022 targetFolder="Builds/VisualStudio2022" extraCompilerFlags="/bigobj">
       <CONFIGURATIONS>
         <CONFIGURATION name="Debug" isDebug="1" optimisation="1" targetName="TamburaApp"/>
-        <CONFIGURATION name="Release" isDebug="0" optimisation="3" targetName="TamburaApp"/>
+        <CONFIGURATION name="Release" isDebug="0" optimisation="3" targetName="TamburaApp"
+                       useRuntimeLibDLL="0"/>
       </CONFIGURATIONS>
       <MODULEPATHS>
         <MODULEPATH id="juce_audio_basics" path=""/>
