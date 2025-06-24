@@ -161,23 +161,29 @@ private:
 
     void loadInstrumentToVector(Instrument instrument)
     {
-        String path;
+        juce::File exeDir = juce::File::getSpecialLocation(juce::File::currentExecutableFile)
+                            .getParentDirectory();
+        //juce::File samplesDir = exeDir.getParentDirectory().getChildFile("Samples");
+        juce::File samplesDir = exeDir.getChildFile("Samples");
+
+        String fileName;
         switch (instrument)
         {
             case Bisernica:
-                path = "C:/Users/josep/FER/treca/6sem/zavrsni/TamburaApp/Samples/primPluck2.wav";
+                fileName = "bisernica.wav";
                 break;
             case Brac:
-                path = "C:/Users/josep/FER/treca/6sem/zavrsni/TamburaApp/Samples/bracPluck1.wav";
+                fileName = "brac.wav";
                 break;
             case Bugarija:
-                path = "C:/Users/josep/FER/treca/6sem/zavrsni/TamburaApp/Samples/kontraPluck1impuls.wav";
+                fileName = "bugarija.wav";
                 break;
             case Bas:
-                path = "C:/Users/josep/FER/treca/6sem/zavrsni/TamburaApp/Samples/basPluck2a.wav";
+                fileName = "bas.wav";
                 break;
         }
-        juce::File sample(path);
+
+        juce::File sample = samplesDir.getChildFile(fileName);
         loadWavToVector(sample);
     }
 
